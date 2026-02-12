@@ -47,11 +47,19 @@ def train(cfg: DictConfig) -> float | None:
     trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     best_score = trainer.callback_metrics.get("val/loss")
+
+    # Run evaluation after training
+    evaluate(cfg, model=model, datamodule=datamodule)
+
     return float(best_score) if best_score is not None else None
 
 
-def evaluate(cfg: DictConfig) -> None:
-    """Load a checkpoint, generate samples, and save evaluation plots."""
+def evaluate(cfg: DictConfig, model=None, datamodule=None) -> None:
+    """Generate samples and save evaluation plots.
+
+    Can be called standalone with a checkpoint path, or directly after training
+    with a model and datamodule already in memory.
+    """
     import torch
     import matplotlib
     import matplotlib.pyplot as plt
@@ -62,16 +70,19 @@ def evaluate(cfg: DictConfig) -> None:
     if cfg.get("seed"):
         pl.seed_everything(cfg.seed, workers=True)
 
-    ckpt_path = cfg.get("ckpt_path")
-    if ckpt_path is None:
-        raise ValueError("ckpt_path must be provided. Usage: python scripts/eval.py ckpt_path=<path>")
+    # Load from checkpoint if model not provided
+    if model is None:
+        ckpt_path = cfg.get("ckpt_path")
+        if ckpt_path is None:
+            raise ValueError("ckpt_path must be provided when model is not passed directly")
+        model = hydra.utils.instantiate(cfg.model)
+        checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(checkpoint["state_dict"])
 
-    datamodule = hydra.utils.instantiate(cfg.data)
-    datamodule.setup()
+    if datamodule is None:
+        datamodule = hydra.utils.instantiate(cfg.data)
+        datamodule.setup()
 
-    model = hydra.utils.instantiate(cfg.model)
-    checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    model.load_state_dict(checkpoint["state_dict"])
     model.eval()
 
     n_samples = cfg.get("n_samples", 1000)
@@ -128,3 +139,37 @@ def evaluate(cfg: DictConfig) -> None:
         plt.savefig(latent_path, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"Saved latent space plot to {latent_path}")
+
+    # Estimate ELBO and log-likelihood on a subset of data
+    n_eval_samples = cfg.get("n_eval_samples", 500)
+    eval_data = train_data[:n_eval_samples]
+
+    with torch.no_grad():
+        # ELBO estimation
+        elbo_values = model.elbo(eval_data, n_samples=10)
+        mean_elbo = elbo_values.mean().item()
+        print(f"\nELBO (n={n_eval_samples} samples, 10 MC samples): {mean_elbo:.4f}")
+
+        # Log-likelihood with increasing number of importance samples
+        print("\nLog-likelihood estimates (importance sampling):")
+        print("-" * 45)
+        ll_sample_counts = cfg.get("ll_sample_counts", [10, 50, 100, 500, 1000])
+        ll_estimates = []
+        for k in ll_sample_counts:
+            ll_values = model.log_likelihood(eval_data, n_samples=k)
+            mean_ll = ll_values.mean().item()
+            ll_estimates.append(mean_ll)
+            print(f"  K={k:5d}: {mean_ll:.4f}")
+
+    # Plot log-likelihood convergence
+    _, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(ll_sample_counts, ll_estimates, marker="o", linewidth=2, markersize=6)
+    ax.set_xscale("log")
+    ax.set_xlabel("Number of importance samples (K)")
+    ax.set_ylabel("Estimated log p(x)")
+    ax.set_title("Log-Likelihood Convergence")
+    ax.grid(True, alpha=0.3)
+    ll_path = output_dir / "log_likelihood_convergence.png"
+    plt.savefig(ll_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"\nSaved log-likelihood convergence plot to {ll_path}")
