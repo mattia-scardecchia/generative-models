@@ -1,33 +1,71 @@
-"""Evaluation and sample generation script.
-
-Usage:
-    python src/eval.py ckpt_path=/path/to/checkpoint.ckpt
-    python src/eval.py ckpt_path=/path/to/checkpoint.ckpt n_samples=2000 logger=none
-"""
-
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 import pytorch_lightning as pl
-import torch
-import matplotlib
-import matplotlib.pyplot as plt
-from pathlib import Path
-
-matplotlib.use("Agg")
+from pytorch_lightning import Trainer
 
 
-@hydra.main(version_base="1.3", config_path="../configs", config_name="config")
-def main(cfg: DictConfig) -> None:
-    print(OmegaConf.to_yaml(cfg))
+def instantiate_loggers(logger_cfg: DictConfig | None) -> list:
+    loggers = []
+    if not logger_cfg or not isinstance(logger_cfg, DictConfig):
+        return loggers
+    for _, lg_conf in logger_cfg.items():
+        if isinstance(lg_conf, DictConfig) and "_target_" in lg_conf:
+            loggers.append(hydra.utils.instantiate(lg_conf))
+    return loggers
+
+
+def instantiate_callbacks(callbacks_cfg: DictConfig | None) -> list:
+    callbacks = []
+    if not callbacks_cfg or not isinstance(callbacks_cfg, DictConfig):
+        return callbacks
+    for _, cb_conf in callbacks_cfg.items():
+        if isinstance(cb_conf, DictConfig) and "_target_" in cb_conf:
+            callbacks.append(hydra.utils.instantiate(cb_conf))
+    return callbacks
+
+
+def train(cfg: DictConfig) -> float | None:
+    """Run training from a resolved Hydra config.
+
+    Returns the best validation loss (useful for hyperparameter optimization).
+    """
+    if cfg.get("seed"):
+        pl.seed_everything(cfg.seed, workers=True)
+
+    datamodule = hydra.utils.instantiate(cfg.data)
+    model = hydra.utils.instantiate(cfg.model)
+
+    loggers = instantiate_loggers(cfg.get("logger"))
+    callbacks = instantiate_callbacks(cfg.get("callbacks"))
+
+    trainer: Trainer = hydra.utils.instantiate(
+        cfg.trainer,
+        logger=loggers if loggers else False,
+        callbacks=callbacks if callbacks else None,
+    )
+
+    trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
+
+    best_score = trainer.callback_metrics.get("val/loss")
+    return float(best_score) if best_score is not None else None
+
+
+def evaluate(cfg: DictConfig) -> None:
+    """Load a checkpoint, generate samples, and save evaluation plots."""
+    import torch
+    import matplotlib
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+
+    matplotlib.use("Agg")
 
     if cfg.get("seed"):
         pl.seed_everything(cfg.seed, workers=True)
 
     ckpt_path = cfg.get("ckpt_path")
     if ckpt_path is None:
-        raise ValueError("ckpt_path must be provided. Usage: python src/eval.py ckpt_path=<path>")
+        raise ValueError("ckpt_path must be provided. Usage: python scripts/eval.py ckpt_path=<path>")
 
-    # Instantiate data and model, then load trained weights
     datamodule = hydra.utils.instantiate(cfg.data)
     datamodule.setup()
 
@@ -37,7 +75,7 @@ def main(cfg: DictConfig) -> None:
     model.eval()
 
     n_samples = cfg.get("n_samples", 1000)
-    output_dir = Path.cwd()  # Hydra sets cwd to output dir
+    output_dir = Path.cwd()
 
     # Generate samples from prior
     samples = model.sample(n_samples).cpu().numpy()
@@ -90,7 +128,3 @@ def main(cfg: DictConfig) -> None:
         plt.savefig(latent_path, dpi=150, bbox_inches="tight")
         plt.close()
         print(f"Saved latent space plot to {latent_path}")
-
-
-if __name__ == "__main__":
-    main()
