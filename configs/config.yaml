@@ -4,6 +4,7 @@ defaults:
   - trainer: default
   - logger: wandb
   - callbacks: default
+  - override hydra/launcher: submitit_slurm
   - _self_
 
 seed: 42
