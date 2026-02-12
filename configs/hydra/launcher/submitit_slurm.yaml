@@ -15,4 +15,4 @@ array_parallelism: 16
 additional_parameters:
   # comment: "preemption=yes;requeue=yes"
   account: torch_pr_147_courant
-  gres: gpu:1
+  # gres: gpu:1

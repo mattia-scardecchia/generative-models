@@ -250,7 +250,7 @@ def evaluate(cfg: DictConfig, model=None, datamodule=None) -> None:
         # ELBO with increasing number of MC samples
         print("\nELBO estimates (Monte Carlo):")
         print("-" * 45)
-        elbo_sample_counts = cfg.get("elbo_sample_counts", [1, 10, 100, 1000, 10000])
+        elbo_sample_counts = cfg.get("elbo_sample_counts", [1, 10, 100, 1000])
         elbo_estimates = []
         for k in elbo_sample_counts:
             elbo_values = model.elbo(eval_data, n_samples=k)
@@ -261,7 +261,7 @@ def evaluate(cfg: DictConfig, model=None, datamodule=None) -> None:
         # Log-likelihood with increasing number of importance samples
         print("\nLog-likelihood estimates (importance sampling):")
         print("-" * 45)
-        ll_sample_counts = cfg.get("ll_sample_counts", [1, 10, 100, 1000, 10000])
+        ll_sample_counts = cfg.get("ll_sample_counts", [1, 10, 100, 1000])
         ll_estimates = []
         for k in ll_sample_counts:
             with torch.no_grad():

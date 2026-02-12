@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -67,8 +69,6 @@ class BetaVAE(pl.LightningModule):
 
         Full formula:
             log N(x; μ, σ²) = -D/2 * log(2π) - 1/2 * Σᵢ [log(σᵢ²) + (xᵢ - μᵢ)² / σᵢ²]
-                                 ~~~~~~~~~~~   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                                  constant              implemented below
 
         Args:
             x: Samples, shape (batch, dim).
@@ -76,9 +76,11 @@ class BetaVAE(pl.LightningModule):
             logvar: Log variance log(σ²), shape (batch, dim) or broadcastable.
 
         Returns:
-            Log probabilities (up to constant), shape (batch,).
+            Log probabilities, shape (batch,).
         """
-        return -0.5 * torch.sum(logvar + (x - mu) ** 2 / torch.exp(logvar), dim=1)
+        d = x.shape[1]
+        const = -0.5 * d * math.log(2 * math.pi)
+        return const - 0.5 * torch.sum(logvar + (x - mu) ** 2 / torch.exp(logvar), dim=1)
 
     def _log_prob_x_given_z(self, x: torch.Tensor, x_recon: torch.Tensor) -> torch.Tensor:
         """Log likelihood log p(x|z) = N(x; f(z), σ²I), where:
@@ -87,11 +89,9 @@ class BetaVAE(pl.LightningModule):
 
         Full formula:
             log p(x|z) = -D/2 * log(2π) - D/2 * log(σ²) - ||x - f(z)||² / (2σ²)
-                          ~~~~~~~~~~~    ~~~~~~~~~~~~~~   ~~~~~~~~~~~~~~~~~~~
-                           constant       variance term    reconstruction term
 
         Returns:
-            Per-sample log probabilities (up to constant), shape (batch,).
+            Per-sample log probabilities, shape (batch,).
         """
         d = x.shape[1]
         logvar = self.decoder_log_var.expand(d)
@@ -102,13 +102,13 @@ class BetaVAE(pl.LightningModule):
 
         Full formula:
             log p(z) = -D/2 * log(2π) - 1/2 * ||z||²
-                        ~~~~~~~~~~~    ~~~~~~~~~~~~
-                         constant       implemented
 
         Returns:
-            Per-sample log probabilities (up to constant), shape (batch,).
+            Per-sample log probabilities, shape (batch,).
         """
-        return -0.5 * torch.sum(z**2, dim=1)
+        d = z.shape[1]
+        const = -0.5 * d * math.log(2 * math.pi)
+        return const - 0.5 * torch.sum(z**2, dim=1)
 
     def _log_prob_variational_posterior(self, z: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         """Log posterior log q(z|x) under the encoder's variational distribution.
@@ -117,11 +117,9 @@ class BetaVAE(pl.LightningModule):
 
         Full formula:
             log q(z|x) = -D/2 * log(2π) - 1/2 * Σᵢ [log(σᵢ²) + (zᵢ - μᵢ)² / σᵢ²]
-                          ~~~~~~~~~~~    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                           constant                  implemented
 
         Returns:
-            Per-sample log probabilities (up to constant), shape (batch,).
+            Per-sample log probabilities, shape (batch,).
         """
         return self._log_prob_factorized_gaussian(z, mu, logvar)
 
@@ -263,26 +261,44 @@ class BetaVAE(pl.LightningModule):
         Returns:
             Per-sample log-likelihood estimates of shape (batch_size,).
         """
+        batch_size = x.shape[0]
         mu, logvar = self.encode(x)
 
-        log_weights = []
-        for _ in range(n_samples):
-            z = self.reparameterize(mu, logvar)
-            x_recon = self.decode(z)
+        # Expand for K samples: (batch, latent_dim) -> (batch, K, latent_dim)
+        mu_expanded = mu.unsqueeze(1).expand(-1, n_samples, -1)
+        logvar_expanded = logvar.unsqueeze(1).expand(-1, n_samples, -1)
 
-            log_prob_x_given_z = self._log_prob_x_given_z(x, x_recon)
-            log_prob_prior = self._log_prob_prior(z)
-            log_prob_variational_posterior = self._log_prob_variational_posterior(z, mu, logvar)
+        # Sample all z's at once: (batch, K, latent_dim)
+        std = torch.exp(0.5 * logvar_expanded)
+        eps = torch.randn_like(std)
+        z = mu_expanded + std * eps
 
-            # Importance weight: p(x|z) * p(z) / q(z|x)
-            log_w = log_prob_x_given_z + log_prob_prior - log_prob_variational_posterior
-            log_weights.append(log_w)
+        # Flatten for decoder: (batch * K, latent_dim)
+        z_flat = z.view(batch_size * n_samples, -1)
+        x_recon_flat = self.decode(z_flat)
 
-        # Stack: (n_samples, batch_size)
-        log_weights = torch.stack(log_weights, dim=0)
+        # Expand x for all K samples: (batch * K, ...)
+        x_expanded = x.unsqueeze(1).expand(-1, n_samples, *x.shape[1:]).reshape(batch_size * n_samples, *x.shape[1:])
+
+        # Compute log probs in batch
+        log_prob_x_given_z = self._log_prob_x_given_z(x_expanded, x_recon_flat)  # (batch * K,)
+        log_prob_prior = self._log_prob_prior(z_flat)  # (batch * K,)
+        log_prob_q = self._log_prob_variational_posterior(
+            z_flat,
+            mu.unsqueeze(1).expand(-1, n_samples, -1).reshape(batch_size * n_samples, -1),
+            logvar.unsqueeze(1).expand(-1, n_samples, -1).reshape(batch_size * n_samples, -1),
+        )  # (batch * K,)
+
+        # Importance weight: p(x|z) * p(z) / q(z|x)
+        log_weights = log_prob_x_given_z + log_prob_prior - log_prob_q  # (batch * K,)
+
+        # Reshape to (batch, K) and apply logsumexp
+        log_weights = log_weights.view(batch_size, n_samples)
 
         # log p(x) ≈ logsumexp(log_weights) - log(n_samples)
-        return torch.logsumexp(log_weights, dim=0) - torch.log(torch.tensor(n_samples, device=x.device))
+        return torch.logsumexp(log_weights, dim=1) - torch.log(
+            torch.tensor(n_samples, dtype=x.dtype, device=x.device)
+        )
 
 
 class IWAE(BetaVAE):
