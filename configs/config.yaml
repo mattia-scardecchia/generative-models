@@ -1,0 +1,11 @@
+defaults:
+  - data: two_moons
+  - model: beta_vae
+  - trainer: default
+  - logger: wandb
+  - callbacks: default
+  - _self_
+
+seed: 42
+ckpt_path: null
+n_samples: 1000

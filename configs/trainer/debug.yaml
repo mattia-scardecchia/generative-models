@@ -1,0 +1,7 @@
+_target_: pytorch_lightning.Trainer
+max_epochs: 3
+accelerator: cpu
+devices: 1
+check_val_every_n_epoch: 1
+limit_train_batches: 5
+limit_val_batches: 5

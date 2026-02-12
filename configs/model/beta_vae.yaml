@@ -1,0 +1,16 @@
+_target_: src.models.beta_vae.BetaVAE
+
+encoder:
+  _target_: src.architectures.mlp.MLPEncoder
+  input_dim: 2
+  hidden_dims: [128, 128]
+
+decoder:
+  _target_: src.architectures.mlp.MLPDecoder
+  input_dim: 2
+  hidden_dims: [128, 128]
+  output_dim: 2
+
+latent_dim: 2
+beta: 1.0
+lr: 1e-3

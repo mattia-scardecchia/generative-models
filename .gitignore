@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+outputs/
+multirun/
+wandb/
+*.ckpt
+.vscode/
+.idea/
+*.swp
+.DS_Store
+.venv/
+venv/
