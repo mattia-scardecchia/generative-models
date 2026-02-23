@@ -1,3 +1,4 @@
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, TensorDataset, random_split
@@ -5,6 +6,9 @@ from sklearn.datasets import make_moons
 
 
 class TwoMoonsDataModule(pl.LightningDataModule):
+
+    class_names = ["Moon 0", "Moon 1"]
+
     def __init__(
         self,
         n_samples: int = 10000,
@@ -57,3 +61,10 @@ class TwoMoonsDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=True,
         )
+
+    def plot_samples(self, ax, data: np.ndarray, labels: np.ndarray | None = None, **kwargs) -> None:
+        """Plot data points as a 2D scatter."""
+        defaults = {"s": 3, "alpha": 0.5, "cmap": "coolwarm"}
+        defaults.update(kwargs)
+        ax.scatter(data[:, 0], data[:, 1], c=labels, **defaults)
+        ax.set_aspect("equal")
