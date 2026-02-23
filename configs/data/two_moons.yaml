@@ -5,3 +5,4 @@ val_fraction: 0.2
 batch_size: 256
 num_workers: 0
 seed: 42
+ambient_dim: null
