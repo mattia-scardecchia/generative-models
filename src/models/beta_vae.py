@@ -71,13 +71,15 @@ class BetaVAE(pl.LightningModule):
             log N(x; μ, σ²) = -D/2 * log(2π) - 1/2 * Σᵢ [log(σᵢ²) + (xᵢ - μᵢ)² / σᵢ²]
 
         Args:
-            x: Samples, shape (batch, dim).
-            mu: Mean, shape (batch, dim) or broadcastable.
-            logvar: Log variance log(σ²), shape (batch, dim) or broadcastable.
+            x: Samples, shape (batch, *).
+            mu: Mean, shape (batch, *) or broadcastable.
+            logvar: Log variance log(σ²), shape (batch, *) or broadcastable.
 
         Returns:
             Log probabilities, shape (batch,).
         """
+        x = x.flatten(1)
+        mu = mu.flatten(1)
         d = x.shape[1]
         const = -0.5 * d * math.log(2 * math.pi)
         return const - 0.5 * torch.sum(logvar + (x - mu) ** 2 / torch.exp(logvar), dim=1)
@@ -93,7 +95,7 @@ class BetaVAE(pl.LightningModule):
         Returns:
             Per-sample log probabilities, shape (batch,).
         """
-        d = x.shape[1]
+        d = x[0].numel()
         logvar = self.decoder_log_var.expand(d)
         return self._log_prob_factorized_gaussian(x, x_recon, logvar)
 
