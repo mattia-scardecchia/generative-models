@@ -1,6 +1,6 @@
 import torch
-import torch.nn as nn
 
+from src.architectures import TimeConditionedNet
 from src.models.base import GenerativeModel
 
 
@@ -20,8 +20,8 @@ class FlowMatching(GenerativeModel):
 
     def __init__(
         self,
-        velocity_field: nn.Module,
         data_dim: int,
+        architecture: dict,
         sigma_min: float = 0.0,
         n_sampling_steps: int = 100,
         lr: float = 1e-3,
@@ -29,8 +29,8 @@ class FlowMatching(GenerativeModel):
         scheduler_config: dict | None = None,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=["velocity_field"])
-        self.velocity_field = velocity_field
+        self.save_hyperparameters()
+        self.velocity_field = TimeConditionedNet(data_dim, architecture)
         self.data_dim = data_dim
         self.sigma_min = sigma_min
         self.n_sampling_steps = n_sampling_steps

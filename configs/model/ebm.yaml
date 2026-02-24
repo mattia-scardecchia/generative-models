@@ -1,11 +1,9 @@
 _target_: src.models.ebm.EBM
-
-energy_net:
-  _target_: src.architectures.energy_mlp.MLPEnergy
-  input_dim: ${..data_dim}
+architecture:
+  type: mlp
   hidden_dims: [256, 256, 128]
   activation: SiLU
-
+data_dim: ???
 lr: 1e-4
 langevin_steps: 60
 langevin_step_size: 0.01
@@ -14,5 +12,4 @@ grad_clamp: 0.03
 replay_buffer_size: 10000
 replay_prob: 0.95
 energy_reg_weight: 1.0
-data_dim: ???
 init_range: 2.0

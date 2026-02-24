@@ -3,6 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
+from src.architectures import EncoderNet, DecoderNet
 from src.models.base import GenerativeModel
 
 
@@ -18,23 +19,23 @@ class BetaVAE(GenerativeModel):
 
     def __init__(
         self,
-        encoder: nn.Module,
-        decoder: nn.Module,
+        data_dim: int,
+        architecture: dict,
         latent_dim: int,
-        data_dim: int | None = None,
         beta: float = 1.0,
         lr: float = 1e-3,
         optimizer_config: dict | None = None,
         scheduler_config: dict | None = None,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=["encoder", "decoder"])
-        self.encoder = encoder
-        self.decoder = decoder
+        self.save_hyperparameters()
+
+        self.encoder = EncoderNet(data_dim, architecture)
+        self.decoder = DecoderNet(latent_dim, data_dim, architecture)
         self.latent_dim = latent_dim
         self.beta = beta
 
-        encoder_output_dim = encoder.output_dim
+        encoder_output_dim = self.encoder.output_dim
         self.fc_mu = nn.Linear(encoder_output_dim, latent_dim)
         self.fc_logvar = nn.Linear(encoder_output_dim, latent_dim)
         self.decoder_log_var = nn.Parameter(torch.zeros(1))
@@ -329,20 +330,18 @@ class IWAE(BetaVAE):
 
     def __init__(
         self,
-        encoder: nn.Module,
-        decoder: nn.Module,
+        data_dim: int,
+        architecture: dict,
         latent_dim: int,
-        data_dim: int | None = None,
         k: int = 5,
         lr: float = 1e-3,
         optimizer_config: dict | None = None,
         scheduler_config: dict | None = None,
     ):
         super().__init__(
-            encoder=encoder,
-            decoder=decoder,
-            latent_dim=latent_dim,
             data_dim=data_dim,
+            architecture=architecture,
+            latent_dim=latent_dim,
             beta=1.0,
             lr=lr,
             optimizer_config=optimizer_config,

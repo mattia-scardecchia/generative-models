@@ -1,20 +1,9 @@
 _target_: src.models.beta_vae.IWAE
-
+architecture:
+  type: mlp
+  hidden_dims: [256, 256]
+  activation: ReLU
 data_dim: ???
-
-encoder:
-  _target_: src.architectures.mlp.MLPEncoder
-  input_dim: ${..data_dim}
-  hidden_dims: [2048, 256]
-  activation: ReLU
-
-decoder:
-  _target_: src.architectures.mlp.MLPDecoder
-  input_dim: ${..latent_dim}
-  hidden_dims: [256, 2048]
-  output_dim: ${..data_dim}
-  activation: ReLU
-
 latent_dim: 2
 k: 5
 lr: 2e-3

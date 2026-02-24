@@ -1,11 +1,9 @@
 _target_: src.models.diffusion.Diffusion
-denoiser:
-  _target_: src.architectures.mlp.MLPVelocityField
-  data_dim: ${..data_dim}
+architecture:
+  type: mlp
   hidden_dims: [256, 256]
   time_embed_dim: 32
   activation: ReLU
-  skip_connection: true
 data_dim: ???
 noise_schedule: vp_cosine
 prediction_type: epsilon

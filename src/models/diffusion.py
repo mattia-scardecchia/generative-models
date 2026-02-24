@@ -12,8 +12,8 @@ References:
 """
 
 import torch
-import torch.nn as nn
 
+from src.architectures import TimeConditionedNet
 from src.models.base import GenerativeModel
 from src.noise_schedules import (
     NoiseSchedule,
@@ -43,8 +43,8 @@ class Diffusion(GenerativeModel):
     DDPM (eta=1): adds stochastic noise scaled by the posterior variance
 
     Args:
-        denoiser: Time-conditioned network, forward(x, t) → output.
         data_dim: Dimensionality of data space.
+        architecture: Architecture config with 'type' and 'kwargs'.
         noise_schedule: Schedule name ("vp_cosine", "vp_linear", "ve").
         prediction_type: What the network predicts ("epsilon", "x0", "velocity").
         sampler: Sampling algorithm ("ddim" or "ddpm").
@@ -58,8 +58,8 @@ class Diffusion(GenerativeModel):
 
     def __init__(
         self,
-        denoiser: nn.Module,
         data_dim: int,
+        architecture: dict,
         noise_schedule: str = "vp_cosine",
         prediction_type: str = "epsilon",
         sampler: str = "ddim",
@@ -71,7 +71,7 @@ class Diffusion(GenerativeModel):
         scheduler_config: dict | None = None,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=["denoiser"])
+        self.save_hyperparameters()
 
         if noise_schedule not in SCHEDULE_REGISTRY:
             raise ValueError(
@@ -89,7 +89,7 @@ class Diffusion(GenerativeModel):
                 f"Choose from: {SAMPLER_TYPES}"
             )
 
-        self.denoiser = denoiser
+        self.denoiser = TimeConditionedNet(data_dim, architecture)
         self.data_dim = data_dim
         self.prediction_type = prediction_type
         self.n_sampling_steps = n_sampling_steps

@@ -1,6 +1,6 @@
 import torch
-import torch.nn as nn
 
+from src.architectures import EnergyNet
 from src.models.base import GenerativeModel
 
 
@@ -19,7 +19,8 @@ class EBM(GenerativeModel):
 
     def __init__(
         self,
-        energy_net: nn.Module,
+        data_dim: int,
+        architecture: dict,
         lr: float = 1e-4,
         langevin_steps: int = 60,
         langevin_step_size: float = 0.01,
@@ -28,14 +29,13 @@ class EBM(GenerativeModel):
         replay_buffer_size: int = 10000,
         replay_prob: float = 0.95,
         energy_reg_weight: float = 1.0,
-        data_dim: int = 2,
         init_range: float = 2.0,
         optimizer_config: dict | None = None,
         scheduler_config: dict | None = None,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=["energy_net"])
-        self.energy_net = energy_net
+        self.save_hyperparameters()
+        self.energy_net = EnergyNet(data_dim, architecture)
         self.langevin_steps = langevin_steps
         self.langevin_step_size = langevin_step_size
         self.langevin_noise_scale = langevin_noise_scale
