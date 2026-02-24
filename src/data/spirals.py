@@ -47,9 +47,6 @@ class SpiralDataModule(pl.LightningDataModule):
         y = t * np.sin(t) + rng.normal(0, self.noise, self.n_samples)
 
         X = torch.tensor(np.column_stack([x, y]), dtype=torch.float32)
-        self.data_mean = X.mean(dim=0)
-        self.data_std = X.std()
-        X = (X - self.data_mean) / self.data_std
         labels = torch.zeros(self.n_samples, dtype=torch.long)
 
         if self.ambient_dim is not None and self.ambient_dim > 2:
@@ -57,6 +54,11 @@ class SpiralDataModule(pl.LightningDataModule):
             Q, _ = torch.linalg.qr(torch.randn(self.ambient_dim, self.ambient_dim, generator=gen))
             self.embedding_matrix = Q[:2, :]  # (2, ambient_dim)
             X = X @ self.embedding_matrix  # (n, 2) @ (2, ambient_dim) -> (n, ambient_dim)
+
+        # Standardize after embedding so the model sees unit-variance data
+        self.data_mean = X.mean(dim=0)
+        self.data_std = X.std()
+        X = (X - self.data_mean) / self.data_std
 
         dataset = TensorDataset(X, labels)
 
@@ -87,11 +89,12 @@ class SpiralDataModule(pl.LightningDataModule):
         )
 
     def project_to_viz(self, data: np.ndarray) -> np.ndarray:
-        """Project ambient-space data back to 2D for visualization and denormalize."""
+        """Denormalize and project back to 2D for visualization."""
+        data = data * self.data_std.numpy() + self.data_mean.numpy()
         if self.embedding_matrix is not None:
             E = self.embedding_matrix.numpy()
             data = data @ E.T  # (n, ambient_dim) @ (ambient_dim, 2) -> (n, 2)
-        return data * self.data_std.numpy() + self.data_mean.numpy()
+        return data
 
     def plot_samples(self, ax, data: np.ndarray, labels: np.ndarray | None = None, **kwargs) -> None:
         """Plot data points as a 2D scatter."""
