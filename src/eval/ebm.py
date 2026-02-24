@@ -8,6 +8,7 @@ import wandb
 from omegaconf import DictConfig
 
 from src.eval.ebm_plots import plot_energy_landscape, plot_ebm_samples
+from src.eval.metrics import compute_sample_metrics
 
 
 def evaluate_ebm(
@@ -26,7 +27,8 @@ def evaluate_ebm(
     n_gen_samples = cfg.get("n_gen_samples", 1000)
     gen_steps = cfg.get("gen_langevin_steps", None)
     with torch.no_grad():
-        generated = model.sample(n_gen_samples, n_steps=gen_steps).cpu().numpy()
+        generated_tensor = model.sample(n_gen_samples, n_steps=gen_steps).cpu()
+    generated = generated_tensor.numpy()
     gen_2d = datamodule.project_to_viz(generated)
 
     plot_ebm_samples(axes[1], datamodule, data_2d, gen_2d, labels_np)
@@ -55,3 +57,15 @@ def evaluate_ebm(
             "eval/energy_min": energy_train.min(),
             "eval/energy_max": energy_train.max(),
         })
+
+    # --- Sample quality metrics ---
+    sample_metrics = compute_sample_metrics(train_data[:n_gen_samples], generated_tensor)
+
+    print("\nSample quality metrics:")
+    print("-" * 45)
+    for name, val in sample_metrics.items():
+        print(f"  {name}: {val:.4f}")
+
+    if wandb.run is not None:
+        for name, val in sample_metrics.items():
+            wandb.log({f"eval/{name}": val})

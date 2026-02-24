@@ -195,23 +195,39 @@ class EvalMetrics:
     kl_to_posterior: float
 
 
-def compute_elbo_curve(model, data: torch.Tensor, sample_counts: list[int]) -> list[float]:
+def compute_elbo_curve(
+    model, data: torch.Tensor, sample_counts: list[int], batch_size: int = 64
+) -> list[float]:
     """Compute ELBO estimates for increasing numbers of MC samples."""
     estimates = []
     with torch.no_grad():
         for k in sample_counts:
-            elbo_values = model.elbo(data, n_samples=k)
-            estimates.append(elbo_values.mean().item())
+            elbo_sum = 0.0
+            n_samples = 0
+            for i in range(0, len(data), batch_size):
+                batch = data[i : i + batch_size]
+                elbo_values = model.elbo(batch, n_samples=k)
+                elbo_sum += elbo_values.sum().item()
+                n_samples += len(batch)
+            estimates.append(elbo_sum / n_samples)
     return estimates
 
 
-def compute_ll_curve(model, data: torch.Tensor, sample_counts: list[int]) -> list[float]:
+def compute_ll_curve(
+    model, data: torch.Tensor, sample_counts: list[int], batch_size: int = 64
+) -> list[float]:
     """Compute log-likelihood estimates for increasing numbers of importance samples."""
     estimates = []
     with torch.no_grad():
         for k in sample_counts:
-            ll_values = model.importance_sampling_log_prob_estimate(data, n_samples=k)
-            estimates.append(ll_values.mean().item())
+            ll_sum = 0.0
+            n_samples = 0
+            for i in range(0, len(data), batch_size):
+                batch = data[i : i + batch_size]
+                ll_values = model.importance_sampling_log_prob_estimate(batch, n_samples=k)
+                ll_sum += ll_values.sum().item()
+                n_samples += len(batch)
+            estimates.append(ll_sum / n_samples)
     return estimates
 
 

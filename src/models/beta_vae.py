@@ -241,7 +241,7 @@ class BetaVAE(GenerativeModel):
         return recon_term - kl_term
 
     def importance_sampling_log_prob_estimate(
-        self, x: torch.Tensor, n_samples: int = 100
+        self, x: torch.Tensor, n_samples: int = 100, batch_k: int = 100
     ) -> torch.Tensor:
         """Estimate log p(x) using importance sampling. Uses the variational posterior q(z|x) as the proposal distribution.
             log p(x) = log E_q(z|x)[p(x|z) * p(z) / q(z|x)]
@@ -254,6 +254,7 @@ class BetaVAE(GenerativeModel):
         Args:
             x: Input samples of shape (batch_size, ...).
             n_samples: Number of importance samples (K).
+            batch_k: Process importance samples in chunks of this size to reduce memory.
 
         Returns:
             Per-sample log-likelihood estimates of shape (batch_size,).
@@ -261,49 +262,57 @@ class BetaVAE(GenerativeModel):
         batch_size = x.shape[0]
         mu, logvar = self.encode(x)
 
-        # Expand for K samples: (batch, latent_dim) -> (batch, K, latent_dim)
-        mu_expanded = mu.unsqueeze(1).expand(-1, n_samples, -1)
-        logvar_expanded = logvar.unsqueeze(1).expand(-1, n_samples, -1)
+        all_log_weights = []
 
-        # Sample all z's at once: (batch, K, latent_dim)
-        std = torch.exp(0.5 * logvar_expanded)
-        eps = torch.randn_like(std)
-        z = mu_expanded + std * eps
+        for k_start in range(0, n_samples, batch_k):
+            k_end = min(k_start + batch_k, n_samples)
+            k_chunk = k_end - k_start
 
-        # Flatten for decoder: (batch * K, latent_dim)
-        z_flat = z.view(batch_size * n_samples, -1)
-        x_recon_flat = self.decode(z_flat)
+            # Expand for this chunk: (batch, latent_dim) -> (batch, k_chunk, latent_dim)
+            mu_expanded = mu.unsqueeze(1).expand(-1, k_chunk, -1)
+            logvar_expanded = logvar.unsqueeze(1).expand(-1, k_chunk, -1)
 
-        # Expand x for all K samples: (batch * K, ...)
-        x_expanded = (
-            x.unsqueeze(1)
-            .expand(-1, n_samples, *x.shape[1:])
-            .reshape(batch_size * n_samples, *x.shape[1:])
-        )
+            # Sample z's for this chunk: (batch, k_chunk, latent_dim)
+            std = torch.exp(0.5 * logvar_expanded)
+            eps = torch.randn_like(std)
+            z = mu_expanded + std * eps
 
-        # Compute log probs in batch
-        log_prob_x_given_z = self._log_prob_x_given_z(
-            x_expanded, x_recon_flat
-        )  # (batch * K,)
-        log_prob_prior = self._log_prob_prior(z_flat)  # (batch * K,)
-        log_prob_q = self._log_prob_variational_posterior(
-            z_flat,
-            mu.unsqueeze(1)
-            .expand(-1, n_samples, -1)
-            .reshape(batch_size * n_samples, -1),
-            logvar.unsqueeze(1)
-            .expand(-1, n_samples, -1)
-            .reshape(batch_size * n_samples, -1),
-        )  # (batch * K,)
+            # Flatten for decoder: (batch * k_chunk, latent_dim)
+            z_flat = z.view(batch_size * k_chunk, -1)
+            x_recon_flat = self.decode(z_flat)
 
-        # Importance weight: p(x|z) * p(z) / q(z|x)
-        log_weights = log_prob_x_given_z + log_prob_prior - log_prob_q  # (batch * K,)
+            # Expand x for this chunk: (batch * k_chunk, ...)
+            x_expanded = (
+                x.unsqueeze(1)
+                .expand(-1, k_chunk, *x.shape[1:])
+                .reshape(batch_size * k_chunk, *x.shape[1:])
+            )
 
-        # Reshape to (batch, K) and apply logsumexp
-        log_weights = log_weights.view(batch_size, n_samples)
+            # Compute log probs in batch
+            log_prob_x_given_z = self._log_prob_x_given_z(
+                x_expanded, x_recon_flat
+            )  # (batch * k_chunk,)
+            log_prob_prior = self._log_prob_prior(z_flat)  # (batch * k_chunk,)
+            log_prob_q = self._log_prob_variational_posterior(
+                z_flat,
+                mu.unsqueeze(1)
+                .expand(-1, k_chunk, -1)
+                .reshape(batch_size * k_chunk, -1),
+                logvar.unsqueeze(1)
+                .expand(-1, k_chunk, -1)
+                .reshape(batch_size * k_chunk, -1),
+            )  # (batch * k_chunk,)
+
+            # Importance weight: p(x|z) * p(z) / q(z|x)
+            log_weights = log_prob_x_given_z + log_prob_prior - log_prob_q
+            log_weights = log_weights.view(batch_size, k_chunk)
+            all_log_weights.append(log_weights)
+
+        # Concatenate all chunks: (batch, n_samples)
+        all_log_weights = torch.cat(all_log_weights, dim=1)
 
         # log p(x) ≈ logsumexp(log_weights) - log(n_samples)
-        return torch.logsumexp(log_weights, dim=1) - torch.log(
+        return torch.logsumexp(all_log_weights, dim=1) - torch.log(
             torch.tensor(n_samples, dtype=x.dtype, device=x.device)
         )
 

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import wandb
 from omegaconf import DictConfig
 
-from src.eval.metrics import compute_eval_metrics
+from src.eval.metrics import compute_eval_metrics, compute_sample_metrics
 from src.eval.plots import plot_reconstructions, plot_latent_space, plot_convergence
 
 
@@ -21,10 +21,20 @@ def evaluate_vae(
     labels_np = train_labels.numpy()
 
     # --- Reconstruction plot ---
+    eval_batch_size = cfg.get("eval_batch_size", 256)
     with torch.no_grad():
-        _, mu, logvar = model(train_data)
-        z_sampled = model.reparameterize(mu, logvar)
-        x_recon_mean = model.decode(z_sampled)
+        mu_list, logvar_list, x_recon_list = [], [], []
+        for i in range(0, len(train_data), eval_batch_size):
+            batch = train_data[i : i + eval_batch_size]
+            _, mu_batch, logvar_batch = model(batch)
+            z_batch = model.reparameterize(mu_batch, logvar_batch)
+            x_recon_batch = model.decode(z_batch)
+            mu_list.append(mu_batch)
+            logvar_list.append(logvar_batch)
+            x_recon_list.append(x_recon_batch)
+        mu = torch.cat(mu_list, dim=0)
+        logvar = torch.cat(logvar_list, dim=0)
+        x_recon_mean = torch.cat(x_recon_list, dim=0)
         decoder_std = model.decoder_var.sqrt()
         x_recon_sampled = x_recon_mean + decoder_std * torch.randn_like(x_recon_mean)
 
@@ -131,3 +141,18 @@ def evaluate_vae(
         })
     plt.close()
     print(f"\nSaved convergence plot to {output_dir / 'convergence.png'}")
+
+    # --- Sample quality metrics ---
+    n_gen_samples = cfg.get("n_gen_samples", len(train_data))
+    with torch.no_grad():
+        generated = model.sample(n_gen_samples)
+    sample_metrics = compute_sample_metrics(train_data[:n_gen_samples], generated)
+
+    print("\nSample quality metrics:")
+    print("-" * 45)
+    for name, val in sample_metrics.items():
+        print(f"  {name}: {val:.4f}")
+
+    if wandb.run is not None:
+        for name, val in sample_metrics.items():
+            wandb.log({f"eval/{name}": val})

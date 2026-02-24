@@ -7,7 +7,7 @@ import torch
 import wandb
 from omegaconf import DictConfig
 
-from src.eval.metrics import sliced_wasserstein, compute_sample_metrics
+from src.eval.metrics import compute_sample_metrics
 from src.eval.plots import plot_samples_panel, plot_snapshots, plot_trajectories
 
 
@@ -32,11 +32,18 @@ def evaluate_trajectory_model(
     samples_np = samples.numpy()
     traj_np = trajectories.numpy()  # (steps+1, n, data_dim)
 
-    # --- Compute Sliced Wasserstein Distance ---
-    swd = sliced_wasserstein(train_data, samples)
-    print(f"Sliced Wasserstein Distance: {swd:.4f}")
+    # --- Sample quality metrics ---
+    sample_metrics = compute_sample_metrics(train_data, samples)
+    print("\nSample quality metrics:")
+    print("-" * 45)
+    for name, val in sample_metrics.items():
+        print(f"  {name}: {val:.4f}")
+
     if wandb.run is not None:
-        wandb.log({"eval/swd": swd})
+        for name, val in sample_metrics.items():
+            wandb.log({f"eval/{name}": val})
+
+    swd = sample_metrics["SWD"]  # backward compatibility for return value
 
     # --- Samples plot (real vs generated) ---
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
