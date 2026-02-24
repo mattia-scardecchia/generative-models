@@ -3,6 +3,7 @@ defaults:
   - /model: flow_matching
   - /architecture: mlp
   - /trainer: default
+  - /evaluate: default
   - /logger: wandb
   - /callbacks: default
   - override hydra/launcher: submitit_slurm

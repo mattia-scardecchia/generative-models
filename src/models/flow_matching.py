@@ -58,9 +58,10 @@ class FlowMatching(GenerativeModel):
         return loss
 
     @torch.no_grad()
-    def sample(self, n_samples: int, return_trajectories: bool = False) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+    def sample(self, n_samples: int, return_trajectories: bool = False, n_steps: int | None = None) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        n_steps = n_steps if n_steps is not None else self.n_sampling_steps
         x = torch.randn(n_samples, self.data_dim, device=self.device)
-        ts = torch.linspace(0, 1, self.n_sampling_steps + 1, device=self.device)
+        ts = torch.linspace(0, 1, n_steps + 1, device=self.device)
         dt = ts[1] - ts[0]
 
         if return_trajectories:
@@ -77,7 +78,17 @@ class FlowMatching(GenerativeModel):
         return x
 
     def evaluate(self, datamodule, train_data, train_labels, output_dir, cfg) -> dict:
-        from src.eval.trajectory import evaluate_trajectory_model
+        from src.eval.trajectory import evaluate_trajectory_model, evaluate_step_sweep
+
+        eval_cfg = cfg.get("evaluate", {})
         _, swd = evaluate_trajectory_model(self, datamodule, train_data, train_labels, output_dir, cfg)
+
+        # --- Step sweep ---
+        step_counts = eval_cfg.get("step_counts", None)
+        n_eval_samples = eval_cfg.get("n_samples", None)
+        sweep_results = evaluate_step_sweep(
+            self, train_data, output_dir, step_counts=step_counts, n_samples=n_eval_samples,
+        )
+
         print(f"Saved plots to {output_dir}")
-        return {"swd": swd}
+        return {"swd": swd, "step_sweep": sweep_results}

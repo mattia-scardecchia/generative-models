@@ -170,7 +170,7 @@ class Diffusion(GenerativeModel):
 
     @torch.no_grad()
     def sample(
-        self, n_samples: int, return_trajectories: bool = False
+        self, n_samples: int, return_trajectories: bool = False, n_steps: int | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Generate samples from t=1 (noise) to t=0 (data).
 
@@ -179,11 +179,12 @@ class Diffusion(GenerativeModel):
         When eta>0 (DDPM-like), stochastic noise is injected via the
         posterior variance.
         """
+        n_steps = n_steps if n_steps is not None else self.n_sampling_steps
         schedule = self.noise_schedule
         # Epsilon prediction divides by α_t, which → 0 at t=1; offset avoids amplification.
         # Velocity and x0 predictions have no such division.
         t_max = 1.0 - 1e-2 if self.prediction_type == "noise" else 1.0
-        ts = torch.linspace(t_max, 0.0, self.n_sampling_steps + 1, device=self.device)
+        ts = torch.linspace(t_max, 0.0, n_steps + 1, device=self.device)
 
         # Initialize at the correct noise level for the schedule
         sigma_max = schedule.sigma(torch.tensor(t_max, device=self.device))
@@ -195,7 +196,7 @@ class Diffusion(GenerativeModel):
         # Track norms for diagnostics
         x_norms, x0_hat_norms = [], []
 
-        for i in range(self.n_sampling_steps):
+        for i in range(n_steps):
             t_now = ts[i]
             t_next = ts[i + 1]
 
@@ -235,7 +236,7 @@ class Diffusion(GenerativeModel):
 
         # Print sampling diagnostics
         peak_idx = max(range(len(x0_hat_norms)), key=lambda i: x0_hat_norms[i])
-        print(f"Sampling diagnostics ({self.n_sampling_steps} steps, {self.prediction_type} prediction):")
+        print(f"Sampling diagnostics ({n_steps} steps, {self.prediction_type} prediction):")
         print(f"  |x| :  init={x_norms[0]:.2f}  final={x.norm(dim=-1).mean():.2f}")
         print(f"  |x0_hat|:  first={x0_hat_norms[0]:.2f}  "
               f"peak={x0_hat_norms[peak_idx]:.2f} (step {peak_idx}, t={ts[peak_idx]:.3f})  "
@@ -251,8 +252,9 @@ class Diffusion(GenerativeModel):
         from src.eval.plots import (
             plot_schedule, plot_forward_backward, plot_prediction_error, plot_score_field,
         )
-        from src.eval.trajectory import evaluate_trajectory_model
+        from src.eval.trajectory import evaluate_trajectory_model, evaluate_step_sweep
 
+        eval_cfg = cfg.get("evaluate", {})
         train_np = train_data.numpy()
         data_2d = datamodule.project_to_viz(train_np)
 
@@ -288,7 +290,7 @@ class Diffusion(GenerativeModel):
         plt.close()
 
         # --- Sample, then combined forward/backward + remaining trajectory plots ---
-        n_eval = len(train_data)
+        n_eval = eval_cfg.get("n_samples", len(train_data))
         samples, trajectories = self.sample(n_eval, return_trajectories=True)
         traj_np = trajectories.numpy()
 
@@ -305,5 +307,12 @@ class Diffusion(GenerativeModel):
             trajectories=trajectories,
         )
 
+        # --- Step sweep ---
+        step_counts = eval_cfg.get("step_counts", None)
+        n_eval_samples = eval_cfg.get("n_samples", None)
+        sweep_results = evaluate_step_sweep(
+            self, train_data, output_dir, step_counts=step_counts, n_samples=n_eval_samples,
+        )
+
         print(f"Saved plots to {output_dir}")
-        return {"swd": swd}
+        return {"swd": swd, "step_sweep": sweep_results}
