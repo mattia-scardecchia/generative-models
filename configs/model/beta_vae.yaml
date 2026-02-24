@@ -1,15 +1,17 @@
 _target_: src.models.beta_vae.BetaVAE
 
+data_dim: ???
+
 encoder:
   _target_: src.architectures.mlp.MLPEncoder
-  input_dim: 2
+  input_dim: ${..data_dim}
   hidden_dims: [2048, 256]
 
 decoder:
   _target_: src.architectures.mlp.MLPDecoder
   input_dim: ${..latent_dim}
   hidden_dims: [256, 2048]
-  output_dim: 2
+  output_dim: ${..data_dim}
 
 latent_dim: 2
 beta: 1

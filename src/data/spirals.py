@@ -31,6 +31,12 @@ class SpiralDataModule(pl.LightningDataModule):
         self.ambient_dim = ambient_dim
         self.embedding_matrix: torch.Tensor | None = None
 
+    @property
+    def data_dim(self) -> int:
+        if self.ambient_dim is not None and self.ambient_dim > 2:
+            return self.ambient_dim
+        return 2
+
     def setup(self, stage: str | None = None):
         if hasattr(self, "train_dataset"):
             return

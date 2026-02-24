@@ -21,6 +21,7 @@ class BetaVAE(GenerativeModel):
         encoder: nn.Module,
         decoder: nn.Module,
         latent_dim: int,
+        data_dim: int | None = None,
         beta: float = 1.0,
         lr: float = 1e-3,
         optimizer_config: dict | None = None,
@@ -37,6 +38,7 @@ class BetaVAE(GenerativeModel):
         self.fc_mu = nn.Linear(encoder_output_dim, latent_dim)
         self.fc_logvar = nn.Linear(encoder_output_dim, latent_dim)
         self.decoder_log_var = nn.Parameter(torch.zeros(1))
+        self.data_dim = data_dim
 
     @property
     def decoder_var(self) -> torch.Tensor:
@@ -49,12 +51,14 @@ class BetaVAE(GenerativeModel):
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         return self.decoder(z)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
         x_recon = self.decode(z)
         return x_recon, mu, logvar
-    
+
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         """Reparameterization trick to sample z from q(z|x) = N(μ, diag(σ²))."""
         std = torch.exp(0.5 * logvar)
@@ -62,7 +66,9 @@ class BetaVAE(GenerativeModel):
         return mu + std * eps
 
     @staticmethod
-    def _log_prob_factorized_gaussian(x: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+    def _log_prob_factorized_gaussian(
+        x: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor
+    ) -> torch.Tensor:
         """Log probability of x under a Gaussian N(μ, diag(σ²)).
 
         Full formula:
@@ -80,9 +86,13 @@ class BetaVAE(GenerativeModel):
         mu = mu.flatten(1)
         d = x.shape[1]
         const = -0.5 * d * math.log(2 * math.pi)
-        return const - 0.5 * torch.sum(logvar + (x - mu) ** 2 / torch.exp(logvar), dim=1)
+        return const - 0.5 * torch.sum(
+            logvar + (x - mu) ** 2 / torch.exp(logvar), dim=1
+        )
 
-    def _log_prob_x_given_z(self, x: torch.Tensor, x_recon: torch.Tensor) -> torch.Tensor:
+    def _log_prob_x_given_z(
+        self, x: torch.Tensor, x_recon: torch.Tensor
+    ) -> torch.Tensor:
         """Log likelihood log p(x|z) = N(x; f(z), σ²I), where:
           - f(z) is the decoder network output
           - σ² is a learned scalar shared across all dimensions
@@ -110,7 +120,9 @@ class BetaVAE(GenerativeModel):
         const = -0.5 * d * math.log(2 * math.pi)
         return const - 0.5 * torch.sum(z**2, dim=1)
 
-    def _log_prob_variational_posterior(self, z: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+    def _log_prob_variational_posterior(
+        self, z: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor
+    ) -> torch.Tensor:
         """Log posterior log q(z|x) under the encoder's variational distribution.
 
         The encoder outputs μ(x) and log(σ²(x)), defining q(z|x) = N(z; μ, diag(σ²)).
@@ -143,7 +155,12 @@ class BetaVAE(GenerativeModel):
         recon_loss = -torch.mean(self._log_prob_x_given_z(x, x_recon))
         kl_loss = torch.mean(self._kl_divergence(mu, logvar))
         loss = recon_loss + self.beta * kl_loss
-        return {"loss": loss, "recon_loss": recon_loss, "kl_loss": kl_loss, "decoder_var": self.decoder_var}
+        return {
+            "loss": loss,
+            "recon_loss": recon_loss,
+            "kl_loss": kl_loss,
+            "decoder_var": self.decoder_var,
+        }
 
     def training_step(self, batch, batch_idx):
         x, _ = batch
@@ -224,7 +241,9 @@ class BetaVAE(GenerativeModel):
         kl_term = self._kl_divergence(mu, logvar)
         return recon_term - kl_term
 
-    def importance_sampling_log_prob_estimate(self, x: torch.Tensor, n_samples: int = 100) -> torch.Tensor:
+    def importance_sampling_log_prob_estimate(
+        self, x: torch.Tensor, n_samples: int = 100
+    ) -> torch.Tensor:
         """Estimate log p(x) using importance sampling. Uses the variational posterior q(z|x) as the proposal distribution.
             log p(x) = log E_q(z|x)[p(x|z) * p(z) / q(z|x)]
                      ≈ log(1/K * Σᵢ [p(x|z_k) * p(z_k) / q(z_k|x)]),
@@ -257,15 +276,25 @@ class BetaVAE(GenerativeModel):
         x_recon_flat = self.decode(z_flat)
 
         # Expand x for all K samples: (batch * K, ...)
-        x_expanded = x.unsqueeze(1).expand(-1, n_samples, *x.shape[1:]).reshape(batch_size * n_samples, *x.shape[1:])
+        x_expanded = (
+            x.unsqueeze(1)
+            .expand(-1, n_samples, *x.shape[1:])
+            .reshape(batch_size * n_samples, *x.shape[1:])
+        )
 
         # Compute log probs in batch
-        log_prob_x_given_z = self._log_prob_x_given_z(x_expanded, x_recon_flat)  # (batch * K,)
+        log_prob_x_given_z = self._log_prob_x_given_z(
+            x_expanded, x_recon_flat
+        )  # (batch * K,)
         log_prob_prior = self._log_prob_prior(z_flat)  # (batch * K,)
         log_prob_q = self._log_prob_variational_posterior(
             z_flat,
-            mu.unsqueeze(1).expand(-1, n_samples, -1).reshape(batch_size * n_samples, -1),
-            logvar.unsqueeze(1).expand(-1, n_samples, -1).reshape(batch_size * n_samples, -1),
+            mu.unsqueeze(1)
+            .expand(-1, n_samples, -1)
+            .reshape(batch_size * n_samples, -1),
+            logvar.unsqueeze(1)
+            .expand(-1, n_samples, -1)
+            .reshape(batch_size * n_samples, -1),
         )  # (batch * K,)
 
         # Importance weight: p(x|z) * p(z) / q(z|x)
@@ -281,6 +310,7 @@ class BetaVAE(GenerativeModel):
 
     def evaluate(self, datamodule, train_data, train_labels, output_dir, cfg) -> None:
         from src.eval.vae import evaluate_vae
+
         evaluate_vae(self, datamodule, train_data, train_labels, output_dir, cfg)
 
 
@@ -302,6 +332,7 @@ class IWAE(BetaVAE):
         encoder: nn.Module,
         decoder: nn.Module,
         latent_dim: int,
+        data_dim: int | None = None,
         k: int = 5,
         lr: float = 1e-3,
         optimizer_config: dict | None = None,
@@ -311,6 +342,7 @@ class IWAE(BetaVAE):
             encoder=encoder,
             decoder=decoder,
             latent_dim=latent_dim,
+            data_dim=data_dim,
             beta=1.0,
             lr=lr,
             optimizer_config=optimizer_config,
@@ -323,7 +355,11 @@ class IWAE(BetaVAE):
         """Compute IWAE loss: -L_K(x)"""
         iwae_bound = self.importance_sampling_log_prob_estimate(x, self.k)
         loss = -torch.mean(iwae_bound)
-        return {"loss": loss, "iwae_bound": torch.mean(iwae_bound), "decoder_var": self.decoder_var}
+        return {
+            "loss": loss,
+            "iwae_bound": torch.mean(iwae_bound),
+            "decoder_var": self.decoder_var,
+        }
 
     def training_step(self, batch, batch_idx):
         x, _ = batch

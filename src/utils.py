@@ -2,7 +2,7 @@ from pathlib import Path
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig
+from omegaconf import DictConfig, open_dict
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
 
@@ -36,6 +36,8 @@ def train(cfg: DictConfig) -> float | None:
         pl.seed_everything(cfg.seed, workers=True)
 
     datamodule = hydra.utils.instantiate(cfg.data)
+    with open_dict(cfg):
+        cfg.model.data_dim = datamodule.data_dim
     model = hydra.utils.instantiate(cfg.model)
 
     loggers = instantiate_loggers(cfg.get("logger"))
@@ -72,17 +74,19 @@ def evaluate(cfg: DictConfig, model=None, datamodule=None) -> None:
         pl.seed_everything(cfg.seed, workers=True)
 
     # --- Setup: load model/data if needed ---
+    if datamodule is None:
+        datamodule = hydra.utils.instantiate(cfg.data)
+        datamodule.setup()
+
     if model is None:
         ckpt_path = cfg.get("ckpt_path")
         if ckpt_path is None:
             raise ValueError("ckpt_path must be provided when model is not passed directly")
+        with open_dict(cfg):
+            cfg.model.data_dim = datamodule.data_dim
         model = hydra.utils.instantiate(cfg.model)
         checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["state_dict"])
-
-    if datamodule is None:
-        datamodule = hydra.utils.instantiate(cfg.data)
-        datamodule.setup()
 
     model.eval()
     output_dir = Path(HydraConfig.get().runtime.output_dir)
