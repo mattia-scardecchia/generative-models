@@ -8,6 +8,7 @@ denoiser:
 data_dim: ???
 noise_schedule: vp_cosine
 prediction_type: epsilon
+sampler: ddim
 schedule_kwargs: null
 n_sampling_steps: 100
 lr: 2e-3

@@ -3,7 +3,7 @@
 Supports:
 - Noise schedules: VP (cosine, linear beta), VE
 - Prediction types: epsilon (noise), x0 (data), velocity
-- Sampling: DDIM
+- Samplers: DDIM (deterministic), DDPM (stochastic), or interpolations via eta
 
 References:
     Ho et al., "Denoising Diffusion Probabilistic Models" (2020)
@@ -29,21 +29,27 @@ SCHEDULE_REGISTRY: dict[str, type[NoiseSchedule]] = {
 }
 
 PREDICTION_TYPES = {"epsilon", "x0", "velocity"}
+SAMPLER_TYPES = {"ddim", "ddpm"}
 
 
 class Diffusion(GenerativeModel):
-    """Diffusion model with DDIM sampling.
+    """Diffusion model with DDIM/DDPM sampling.
 
     The denoiser f_θ(x_t, t) predicts a target whose type depends on
     prediction_type. During sampling, all predictions are converted to
-    (x̂₀, ε̂) for the DDIM update: x_s = α_s x̂₀ + σ_s ε̂.
+    (x̂₀, ε̂) for the update rule selected by `sampler` and `eta`.
+
+    DDIM (eta=0): x_s = α_s x̂₀ + σ_s ε̂  (deterministic)
+    DDPM (eta=1): adds stochastic noise scaled by the posterior variance
 
     Args:
         denoiser: Time-conditioned network, forward(x, t) → output.
         data_dim: Dimensionality of data space.
         noise_schedule: Schedule name ("vp_cosine", "vp_linear", "ve").
         prediction_type: What the network predicts ("epsilon", "x0", "velocity").
-        n_sampling_steps: Number of DDIM steps.
+        sampler: Sampling algorithm ("ddim" or "ddpm").
+        eta: Stochasticity. None → 0.0 for ddim, 1.0 for ddpm. Explicit value overrides.
+        n_sampling_steps: Number of sampling steps.
         lr: Learning rate.
         schedule_kwargs: Extra kwargs for the noise schedule constructor.
         optimizer_config: Optional optimizer config dict.
@@ -56,6 +62,8 @@ class Diffusion(GenerativeModel):
         data_dim: int,
         noise_schedule: str = "vp_cosine",
         prediction_type: str = "epsilon",
+        sampler: str = "ddim",
+        eta: float | None = None,
         n_sampling_steps: int = 100,
         lr: float = 1e-3,
         schedule_kwargs: dict | None = None,
@@ -75,11 +83,17 @@ class Diffusion(GenerativeModel):
                 f"Unknown prediction type '{prediction_type}'. "
                 f"Choose from: {PREDICTION_TYPES}"
             )
+        if sampler not in SAMPLER_TYPES:
+            raise ValueError(
+                f"Unknown sampler '{sampler}'. "
+                f"Choose from: {SAMPLER_TYPES}"
+            )
 
         self.denoiser = denoiser
         self.data_dim = data_dim
         self.prediction_type = prediction_type
         self.n_sampling_steps = n_sampling_steps
+        self.eta = eta if eta is not None else (0.0 if sampler == "ddim" else 1.0)
 
         schedule_cls = SCHEDULE_REGISTRY[noise_schedule]
         self.noise_schedule: NoiseSchedule = schedule_cls(**(schedule_kwargs or {}))
@@ -157,10 +171,12 @@ class Diffusion(GenerativeModel):
     def sample(
         self, n_samples: int, return_trajectories: bool = False
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        """Generate samples via DDIM from t=1 (noise) to t=0 (data).
+        """Generate samples from t=1 (noise) to t=0 (data).
 
-        DDIM update from noise level t to s (s < t):
+        When eta=0 (DDIM), the update is deterministic:
             x_s = α_s x̂₀ + σ_s ε̂
+        When eta>0 (DDPM-like), stochastic noise is injected via the
+        posterior variance.
         """
         schedule = self.noise_schedule
         t_max = 1.0 - 1e-3
@@ -184,7 +200,24 @@ class Diffusion(GenerativeModel):
             if t_next > 0:
                 alpha_s = schedule.alpha(t_next.unsqueeze(0)).squeeze(0)
                 sigma_s = schedule.sigma(t_next.unsqueeze(0)).squeeze(0)
-                x = alpha_s * x0_hat + sigma_s * eps_hat
+
+                if self.eta > 0:
+                    alpha_t = schedule.alpha(t_now.unsqueeze(0)).squeeze(0)
+                    sigma_t = schedule.sigma(t_now.unsqueeze(0)).squeeze(0)
+                    # Posterior variance: σ̃² = σ_s² · σ²_{t|s} / σ_t²
+                    sigma_t_given_s_sq = (
+                        sigma_t**2 - (alpha_t / alpha_s) ** 2 * sigma_s**2
+                    ).clamp(min=0)
+                    sigma_tilde = (
+                        sigma_s * sigma_t_given_s_sq.sqrt() / sigma_t.clamp(min=1e-8)
+                    )
+                    coeff_eps = (
+                        (sigma_s**2 - (self.eta * sigma_tilde) ** 2).clamp(min=0).sqrt()
+                    )
+                    z = torch.randn_like(x)
+                    x = alpha_s * x0_hat + coeff_eps * eps_hat + self.eta * sigma_tilde * z
+                else:
+                    x = alpha_s * x0_hat + sigma_s * eps_hat
             else:
                 x = x0_hat
 
