@@ -47,7 +47,7 @@ class ResidualBlock(nn.Module):
         return x + self.net(x)
 
 
-def build_residual_mlp(
+def build_resmlp(
     dim: int,
     n_blocks: int,
     expansion: int = 4,
@@ -81,7 +81,7 @@ class SinusoidalTimeEmbedding(nn.Module):
         return torch.cat([args.sin(), args.cos()], dim=-1)
 
 
-ARCHITECTURE_TYPES = {"mlp", "residual_mlp"}
+ARCHITECTURE_TYPES = {"mlp", "resmlp"}
 
 
 def build_backbone(
@@ -92,7 +92,7 @@ def build_backbone(
     Args:
         architecture: Dict with 'type' and architecture-specific kwargs.
             For 'mlp': hidden_dims, activation.
-            For 'residual_mlp': hidden_dim, n_blocks, expansion, activation.
+            For 'resmlp': hidden_dim, n_blocks, expansion, activation.
         input_dim: Input feature dimension.
         output_dim: If given, adds a final output projection. If None, outputs
             the last hidden dimension (feature extractor mode).
@@ -107,14 +107,14 @@ def build_backbone(
         activation = architecture.get("activation", "ReLU")
         net = build_mlp(input_dim, hidden_dims, output_dim=output_dim, activation=activation)
         eff_dim = output_dim if output_dim is not None else hidden_dims[-1]
-    elif arch_type == "residual_mlp":
+    elif arch_type == "resmlp":
         hidden_dim = architecture["hidden_dim"]
         n_blocks = architecture["n_blocks"]
         expansion = architecture.get("expansion", 4)
         activation = architecture.get("activation", "ReLU")
         layers: list[nn.Module] = [
             nn.Linear(input_dim, hidden_dim),
-            build_residual_mlp(hidden_dim, n_blocks, expansion, activation),
+            build_resmlp(hidden_dim, n_blocks, expansion, activation),
         ]
         if output_dim is not None:
             layers.append(nn.Linear(hidden_dim, output_dim))

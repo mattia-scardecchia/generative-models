@@ -1,4 +1,4 @@
-type: residual_mlp
+type: resmlp
 hidden_dim: 256
 n_blocks: 4
 expansion: 4
