@@ -163,11 +163,12 @@ class Diffusion(GenerativeModel):
             x_s = α_s x̂₀ + σ_s ε̂
         """
         schedule = self.noise_schedule
-        ts = torch.linspace(1.0, 0.0, self.n_sampling_steps + 1, device=self.device)
+        t_max = 1.0 - 1e-3
+        ts = torch.linspace(t_max, 0.0, self.n_sampling_steps + 1, device=self.device)
 
         # Initialize at the correct noise level for the schedule
-        sigma_1 = schedule.sigma(torch.tensor(1.0, device=self.device))
-        x = torch.randn(n_samples, self.data_dim, device=self.device) * sigma_1
+        sigma_max = schedule.sigma(torch.tensor(t_max, device=self.device))
+        x = torch.randn(n_samples, self.data_dim, device=self.device) * sigma_max
 
         if return_trajectories:
             trajectory = [x.clone()]
