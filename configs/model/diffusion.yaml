@@ -2,7 +2,7 @@ _target_: src.models.diffusion.Diffusion
 time_embed_dim: 32
 data_dim: ???
 noise_schedule: vp_cosine
-prediction_type: epsilon
+prediction_type: noise
 sampler: ddim
 schedule_kwargs: null
 n_sampling_steps: 100

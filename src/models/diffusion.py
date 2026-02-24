@@ -28,7 +28,7 @@ SCHEDULE_REGISTRY: dict[str, type[NoiseSchedule]] = {
     "ve": VESchedule,
 }
 
-PREDICTION_TYPES = {"epsilon", "x0", "velocity"}
+PREDICTION_TYPES = {"noise", "data", "velocity"}
 SAMPLER_TYPES = {"ddim", "ddpm"}
 
 
@@ -46,7 +46,7 @@ class Diffusion(GenerativeModel):
         data_dim: Dimensionality of data space.
         architecture: Architecture config with 'type' and 'kwargs'.
         noise_schedule: Schedule name ("vp_cosine", "vp_linear", "ve").
-        prediction_type: What the network predicts ("epsilon", "x0", "velocity").
+        prediction_type: What the network predicts ("noise", "data", "velocity").
         sampler: Sampling algorithm ("ddim" or "ddpm").
         eta: Stochasticity. None → 0.0 for ddim, 1.0 for ddpm. Explicit value overrides.
         n_sampling_steps: Number of sampling steps.
@@ -62,7 +62,7 @@ class Diffusion(GenerativeModel):
         architecture: dict,
         time_embed_dim: int = 32,
         noise_schedule: str = "vp_cosine",
-        prediction_type: str = "epsilon",
+        prediction_type: str = "noise",
         sampler: str = "ddim",
         eta: float | None = None,
         n_sampling_steps: int = 100,
@@ -109,9 +109,9 @@ class Diffusion(GenerativeModel):
             noise: Sampled ε, (batch, data_dim).
             t: Time values, (batch, 1).
         """
-        if self.prediction_type == "epsilon":
+        if self.prediction_type == "noise":
             return noise
-        elif self.prediction_type == "x0":
+        elif self.prediction_type == "data":
             return x_0
         else:  # velocity
             alpha_t = self.noise_schedule.alpha(t)
@@ -131,10 +131,10 @@ class Diffusion(GenerativeModel):
         alpha_t = self.noise_schedule.alpha(t)
         sigma_t = self.noise_schedule.sigma(t)
 
-        if self.prediction_type == "epsilon":
+        if self.prediction_type == "noise":
             eps_hat = network_output
             x0_hat = (x_t - sigma_t * eps_hat) / alpha_t.clamp(min=1e-8)
-        elif self.prediction_type == "x0":
+        elif self.prediction_type == "data":
             x0_hat = network_output
             eps_hat = (x_t - alpha_t * x0_hat) / sigma_t.clamp(min=1e-8)
         else:  # velocity
@@ -182,7 +182,7 @@ class Diffusion(GenerativeModel):
         schedule = self.noise_schedule
         # Epsilon prediction divides by α_t, which → 0 at t=1; offset avoids amplification.
         # Velocity and x0 predictions have no such division.
-        t_max = 1.0 - 1e-2 if self.prediction_type == "epsilon" else 1.0
+        t_max = 1.0 - 1e-2 if self.prediction_type == "noise" else 1.0
         ts = torch.linspace(t_max, 0.0, self.n_sampling_steps + 1, device=self.device)
 
         # Initialize at the correct noise level for the schedule
