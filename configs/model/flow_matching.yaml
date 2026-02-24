@@ -1,0 +1,10 @@
+_target_: src.models.flow_matching.FlowMatching
+velocity_field:
+  _target_: src.architectures.mlp.MLPVelocityField
+  data_dim: 2
+  hidden_dims: [256, 256, 256]
+  time_embed_dim: 32
+data_dim: 2
+sigma_min: 0.0
+n_sampling_steps: 100
+lr: 2e-3

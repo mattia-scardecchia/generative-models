@@ -1,0 +1,46 @@
+"""Evaluation for Energy-Based Models."""
+
+from pathlib import Path
+
+import torch
+import matplotlib.pyplot as plt
+from omegaconf import DictConfig
+
+from src.eval.ebm_plots import plot_energy_landscape, plot_ebm_samples
+
+
+def evaluate_ebm(
+    model, datamodule, train_data: torch.Tensor, train_labels: torch.Tensor,
+    output_dir: Path, cfg: DictConfig,
+) -> None:
+    train_np = train_data.numpy()
+    labels_np = train_labels.numpy()
+    data_2d = datamodule.project_to_viz(train_np)
+
+    # --- Energy landscape + generated samples ---
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    plot_energy_landscape(axes[0], model, datamodule, data_2d)
+
+    n_gen_samples = cfg.get("n_gen_samples", 1000)
+    gen_steps = cfg.get("gen_langevin_steps", None)
+    with torch.no_grad():
+        generated = model.sample(n_gen_samples, n_steps=gen_steps).cpu().numpy()
+    gen_2d = datamodule.project_to_viz(generated)
+
+    plot_ebm_samples(axes[1], datamodule, data_2d, gen_2d, labels_np)
+
+    plt.tight_layout()
+    plt.savefig(output_dir / "ebm_evaluation.png", dpi=200, bbox_inches="tight")
+    plt.close()
+    print(f"Saved EBM evaluation plot to {output_dir / 'ebm_evaluation.png'}")
+
+    # --- Energy statistics ---
+    with torch.no_grad():
+        energy_train = model.energy_net(train_data).numpy()
+    print(f"\nEnergy statistics on training data:")
+    print("-" * 45)
+    print(f"  Mean:   {energy_train.mean():.4f}")
+    print(f"  Std:    {energy_train.std():.4f}")
+    print(f"  Min:    {energy_train.min():.4f}")
+    print(f"  Max:    {energy_train.max():.4f}")

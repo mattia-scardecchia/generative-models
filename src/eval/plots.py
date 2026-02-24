@@ -125,6 +125,87 @@ def plot_latent_space(
     axes[2].legend(loc="upper right", markerscale=1.5)
 
 
+def plot_samples_panel(
+    fig: Figure,
+    axes: tuple[Axes, Axes],
+    datamodule,
+    real_data: np.ndarray,
+    generated_data: np.ndarray,
+    labels: np.ndarray | None = None,
+) -> None:
+    """Plot real data vs generated samples (2 panels)."""
+    datamodule.plot_samples(axes[0], real_data, labels)
+    axes[0].set_title("Training Data")
+
+    datamodule.plot_samples(axes[1], generated_data)
+    axes[1].set_title("Generated Samples")
+
+
+def plot_snapshots(
+    fig: Figure,
+    axes: list[Axes],
+    datamodule,
+    trajectories: np.ndarray,
+    n_timesteps: int = 6,
+) -> None:
+    """Plot point cloud snapshots at evenly-spaced time steps.
+
+    Args:
+        trajectories: Array of shape (total_steps, n_samples, data_dim).
+        n_timesteps: Number of snapshots to show (including t=0 and t=1).
+    """
+    total_steps = trajectories.shape[0]
+    step_indices = np.linspace(0, total_steps - 1, n_timesteps, dtype=int)
+
+    for ax, step_idx in zip(axes, step_indices):
+        t_val = step_idx / (total_steps - 1)
+        snapshot = trajectories[step_idx]
+        datamodule.plot_samples(ax, snapshot)
+        ax.set_title(f"t = {t_val:.2f}")
+
+
+def plot_trajectories(
+    fig: Figure,
+    ax: Axes,
+    datamodule,
+    trajectories: np.ndarray,
+    n_trajectories: int = 50,
+) -> None:
+    """Plot ODE trajectories from noise to data as time-colored lines.
+
+    Args:
+        trajectories: Array of shape (total_steps, n_samples, data_dim).
+        n_trajectories: Number of random trajectories to plot.
+    """
+    total_steps, n_samples, _ = trajectories.shape
+
+    # Project all steps to 2D for visualization
+    projected = np.stack([datamodule.project_to_viz(trajectories[s]) for s in range(total_steps)])
+
+    indices = np.random.choice(n_samples, size=min(n_trajectories, n_samples), replace=False)
+    t_vals = np.linspace(0, 1, total_steps)
+    cmap = plt.cm.viridis
+
+    for idx in indices:
+        path = projected[:, idx, :]  # (total_steps, 2)
+        for s in range(total_steps - 1):
+            ax.plot(
+                path[s:s+2, 0], path[s:s+2, 1],
+                color=cmap(t_vals[s]), linewidth=0.5, alpha=0.6,
+            )
+
+    # Mark start (noise) and end (data)
+    ax.scatter(projected[0, indices, 0], projected[0, indices, 1], c="blue", s=8, zorder=5, label="t=0 (noise)")
+    ax.scatter(projected[-1, indices, 0], projected[-1, indices, 1], c="red", s=8, zorder=5, label="t=1 (data)")
+    ax.set_aspect("equal")
+    ax.legend(loc="upper right", fontsize=8)
+    ax.set_title("ODE Trajectories")
+
+    # Add colorbar for time
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 1))
+    plt.colorbar(sm, ax=ax, label="t")
+
+
 def plot_convergence(
     fig: Figure,
     axes: tuple[Axes, Axes],
