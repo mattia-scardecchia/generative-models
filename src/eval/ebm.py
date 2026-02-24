@@ -9,6 +9,7 @@ from omegaconf import DictConfig
 
 from src.eval.ebm_plots import plot_energy_landscape, plot_ebm_samples
 from src.eval.metrics import log_sample_metrics
+from src.eval.plots import plot_samples_panel
 
 
 def evaluate_ebm(
@@ -39,6 +40,15 @@ def evaluate_ebm(
         wandb.log({"eval/ebm_evaluation": wandb.Image(fig)})
     plt.close()
     print(f"Saved EBM evaluation plot to {output_dir / 'ebm_evaluation.png'}")
+
+    # --- Samples plot (real vs generated) ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    plot_samples_panel(fig, (axes[0], axes[1]), datamodule, train_np, generated, labels_np)
+    plt.tight_layout()
+    plt.savefig(output_dir / "samples.png", dpi=150, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/samples": wandb.Image(fig)})
+    plt.close()
 
     # --- Energy statistics ---
     with torch.no_grad():

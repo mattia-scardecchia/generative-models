@@ -10,7 +10,7 @@ import wandb
 from omegaconf import DictConfig
 
 from src.eval.metrics import compute_eval_metrics, log_sample_metrics
-from src.eval.plots import plot_reconstructions, plot_latent_space, plot_convergence
+from src.eval.plots import plot_reconstructions, plot_latent_space, plot_convergence, plot_samples_panel
 
 
 def evaluate_vae(
@@ -146,4 +146,14 @@ def evaluate_vae(
     n_gen_samples = cfg.get("evaluate", {}).get("n_samples", 1000)
     with torch.no_grad():
         generated = model.sample(n_gen_samples)
+
+    # --- Samples plot (real vs generated) ---
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    plot_samples_panel(fig, (axes[0], axes[1]), datamodule, train_np, generated.numpy(), labels_np)
+    plt.tight_layout()
+    plt.savefig(output_dir / "samples.png", dpi=150, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/samples": wandb.Image(fig)})
+    plt.close()
+
     log_sample_metrics(train_data[:n_gen_samples], generated)

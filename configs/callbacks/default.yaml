@@ -13,3 +13,8 @@ early_stopping:
   monitor: "val/loss"
   patience: 20
   mode: "min"
+
+sample_logger:
+  _target_: src.callbacks.SampleLoggerCallback
+  every_n_epochs: 10
+  n_samples: 512
