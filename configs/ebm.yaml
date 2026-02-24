@@ -1,11 +1,11 @@
 defaults:
   - /data: moons
-  - /model: flow_matching
+  - /model: ebm
   - /architecture: mlp
   - /trainer: default
   - /logger: wandb
   - /callbacks: default
-  - override /hydra/launcher: submitit_slurm
+  - override hydra/launcher: submitit_slurm
   - _self_
 
 seed: 42
