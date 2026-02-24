@@ -1,5 +1,5 @@
 type: resmlp
-hidden_dim: 256
-n_blocks: 4
+hidden_dim: 64
+n_blocks: 10
 expansion: 4
 activation: ReLU
