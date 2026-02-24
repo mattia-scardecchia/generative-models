@@ -2,7 +2,7 @@ _target_: src.models.diffusion.Diffusion
 denoiser:
   _target_: src.architectures.mlp.MLPVelocityField
   data_dim: ${..data_dim}
-  hidden_dims: [256, 256, 256]
+  hidden_dims: [256, 256]
   time_embed_dim: 32
   activation: ReLU
 data_dim: ???
