@@ -1,0 +1,5 @@
+type: residual_mlp
+hidden_dim: 256
+n_blocks: 4
+expansion: 4
+activation: ReLU

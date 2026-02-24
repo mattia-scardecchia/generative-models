@@ -1,9 +1,6 @@
 _target_: src.models.flow_matching.FlowMatching
-architecture:
-  type: mlp
-  hidden_dims: [256, 256, 256]
-  time_embed_dim: 32
-  activation: ReLU
+architecture: ${architecture}
+time_embed_dim: 32
 data_dim: ???
 sigma_min: 0.0
 n_sampling_steps: 100

@@ -1,6 +1,7 @@
 defaults:
   - data: moons
   - model: vae
+  - architecture: mlp
   - trainer: default
   - logger: wandb
   - callbacks: default

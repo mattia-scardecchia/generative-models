@@ -1,8 +1,5 @@
 _target_: src.models.ebm.EBM
-architecture:
-  type: mlp
-  hidden_dims: [256, 256, 128]
-  activation: SiLU
+architecture: ${architecture}
 data_dim: ???
 lr: 1e-4
 langevin_steps: 60
