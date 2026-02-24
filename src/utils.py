@@ -2,9 +2,10 @@ from pathlib import Path
 
 import hydra
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import DictConfig, open_dict
+from omegaconf import DictConfig, OmegaConf, open_dict
 import pytorch_lightning as pl
 from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import WandbLogger
 
 
 def instantiate_loggers(logger_cfg: DictConfig | None) -> list:
@@ -43,6 +44,13 @@ def train(cfg: DictConfig) -> float | None:
     model = hydra.utils.instantiate(cfg.model, architecture=cfg.architecture)
 
     loggers = instantiate_loggers(cfg.get("logger"))
+    for logger in loggers:
+        if isinstance(logger, WandbLogger):
+            logger.experiment.config.update(
+                OmegaConf.to_container(cfg, resolve=True),
+                allow_val_change=True,
+            )
+            break
     callbacks = instantiate_callbacks(cfg.get("callbacks"))
 
     trainer: Trainer = hydra.utils.instantiate(
