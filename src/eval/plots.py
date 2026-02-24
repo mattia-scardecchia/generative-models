@@ -207,6 +207,131 @@ def plot_trajectories(
     plt.colorbar(sm, ax=ax, label="t")
 
 
+def make_2d_eval_grid(
+    datamodule,
+    data_2d: np.ndarray,
+    resolution: int = 100,
+    padding: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray, torch.Tensor]:
+    """Create a 2D meshgrid over the data extent and convert to model-space tensor.
+
+    Returns (xx, yy, grid_tensor) where grid_tensor is (resolution², data_dim)
+    in the same space the model operates on (normalized, possibly ambient-dim).
+    """
+    x_min, x_max = data_2d[:, 0].min() - padding, data_2d[:, 0].max() + padding
+    y_min, y_max = data_2d[:, 1].min() - padding, data_2d[:, 1].max() + padding
+
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, resolution),
+        np.linspace(y_min, y_max, resolution),
+    )
+    grid_2d = np.column_stack([xx.ravel(), yy.ravel()])
+
+    # Lift to ambient space if needed
+    if hasattr(datamodule, "embedding_matrix") and datamodule.embedding_matrix is not None:
+        E = datamodule.embedding_matrix.numpy()  # (2, ambient_dim)
+        grid = grid_2d @ E
+    else:
+        grid = grid_2d
+
+    # Normalize to model space
+    if hasattr(datamodule, "data_mean") and hasattr(datamodule, "data_std"):
+        grid = (grid - datamodule.data_mean.numpy()) / datamodule.data_std.numpy()
+
+    return xx, yy, torch.tensor(grid, dtype=torch.float32)
+
+
+def project_directions_to_2d(datamodule, directions: np.ndarray) -> np.ndarray:
+    """Project model-space directions back to 2D viz space.
+
+    Applies the inverse of the normalization scaling (but not the mean shift,
+    since these are directions not positions) and the ambient→2D projection.
+    """
+    if hasattr(datamodule, "data_std"):
+        directions = directions * datamodule.data_std.numpy()
+    if hasattr(datamodule, "embedding_matrix") and datamodule.embedding_matrix is not None:
+        E = datamodule.embedding_matrix.numpy()
+        directions = directions @ E.T
+    return directions
+
+
+def plot_prediction_error(
+    fig: Figure,
+    ax: Axes,
+    model,
+    data: torch.Tensor,
+    n_timesteps: int = 50,
+) -> None:
+    """Plot per-element MSE of the model's prediction as a function of t."""
+    t_vals = np.linspace(0.01, 0.99, n_timesteps)
+    mse_vals = []
+
+    # Use a fixed subset and noise for stable evaluation
+    x_0 = data[:1000] if len(data) > 1000 else data
+    noise = torch.randn_like(x_0)
+
+    for t_val in t_vals:
+        t = torch.full((x_0.shape[0], 1), t_val)
+        x_t = model.noise_schedule.q_sample(x_0, t, noise)
+        target = model._get_target(x_0, noise, t)
+
+        with torch.no_grad():
+            prediction = model.denoiser(x_t, t.squeeze(-1))
+        mse = ((prediction - target) ** 2).mean().item()
+        mse_vals.append(mse)
+
+    ax.plot(t_vals, mse_vals, linewidth=2)
+    ax.set_xlabel("t")
+    ax.set_ylabel("MSE")
+    ax.set_title(f"Prediction Error ({model.prediction_type})")
+    ax.grid(True, alpha=0.3)
+
+
+def plot_score_field(
+    fig: Figure,
+    axes: list[Axes],
+    model,
+    datamodule,
+    data_2d: np.ndarray,
+    t_vals: list[float] | None = None,
+    resolution: int = 20,
+) -> None:
+    """Plot the denoising direction field at multiple noise levels.
+
+    Shows quiver arrows pointing from x_t toward x̂₀ (where the model
+    thinks the clean data is), overlaid on training data.
+    """
+    if t_vals is None:
+        t_vals = [0.1, 0.3, 0.5, 0.7, 0.9]
+
+    xx, yy, grid_tensor = make_2d_eval_grid(datamodule, data_2d, resolution=resolution)
+    grid_tensor = grid_tensor.to(model.device)
+
+    for ax, t_val in zip(axes, t_vals):
+        t_batch = torch.full((grid_tensor.shape[0],), t_val, device=model.device)
+
+        with torch.no_grad():
+            output = model.denoiser(grid_tensor, t_batch)
+            x0_hat, _ = model._predict_x0_and_eps(grid_tensor, t_batch, output)
+
+        # Denoising direction in model space: where the model thinks clean data is
+        direction = (x0_hat - grid_tensor).cpu().numpy()
+        direction_2d = project_directions_to_2d(datamodule, direction)
+
+        # Normalize arrows for visibility, encode magnitude as color
+        magnitudes = np.linalg.norm(direction_2d, axis=1, keepdims=True)
+        direction_norm = direction_2d / np.clip(magnitudes, 1e-8, None)
+
+        ax.scatter(data_2d[:, 0], data_2d[:, 1], c="lightgray", s=1, alpha=0.3, zorder=0)
+        ax.quiver(
+            xx.ravel(), yy.ravel(),
+            direction_norm[:, 0], direction_norm[:, 1],
+            magnitudes.ravel(), cmap="viridis", scale=30, width=0.004, alpha=0.8,
+        )
+        ax.set_title(f"t = {t_val:.1f}")
+        ax.set_aspect("equal")
+
+
 def plot_schedule(
     fig: Figure,
     axes: tuple[Axes, Axes],

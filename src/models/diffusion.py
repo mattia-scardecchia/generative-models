@@ -246,8 +246,13 @@ class Diffusion(GenerativeModel):
 
     def evaluate(self, datamodule, train_data, train_labels, output_dir, cfg) -> None:
         import matplotlib.pyplot as plt
-        from src.eval.plots import plot_schedule, plot_forward_process
+        from src.eval.plots import (
+            plot_schedule, plot_forward_process, plot_prediction_error, plot_score_field,
+        )
         from src.eval.trajectory import evaluate_trajectory_model
+
+        train_np = train_data.numpy()
+        data_2d = datamodule.project_to_viz(train_np)
 
         # --- Schedule diagnostics ---
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
@@ -260,10 +265,27 @@ class Diffusion(GenerativeModel):
         # --- Forward process visualization ---
         n_timesteps = 6
         fig, axes = plt.subplots(1, n_timesteps, figsize=(4 * n_timesteps, 4))
-        plot_forward_process(fig, list(axes), datamodule, train_data.numpy(), self.noise_schedule, n_timesteps)
+        plot_forward_process(fig, list(axes), datamodule, train_np, self.noise_schedule, n_timesteps)
         plt.tight_layout()
         plt.savefig(output_dir / "forward_process.png", dpi=150, bbox_inches="tight")
         plt.close()
         print(f"Saved forward process plot to {output_dir / 'forward_process.png'}")
+
+        # --- Prediction error vs t ---
+        fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+        plot_prediction_error(fig, ax, self, train_data)
+        plt.tight_layout()
+        plt.savefig(output_dir / "prediction_error.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved prediction error plot to {output_dir / 'prediction_error.png'}")
+
+        # --- Score field visualization ---
+        t_vals = [0.1, 0.3, 0.5, 0.7, 0.9]
+        fig, axes = plt.subplots(1, len(t_vals), figsize=(4 * len(t_vals), 4))
+        plot_score_field(fig, list(axes), self, datamodule, data_2d, t_vals=t_vals)
+        plt.tight_layout()
+        plt.savefig(output_dir / "score_field.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved score field plot to {output_dir / 'score_field.png'}")
 
         evaluate_trajectory_model(self, datamodule, train_data, train_labels, output_dir, cfg)

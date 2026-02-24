@@ -3,6 +3,8 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 
+from src.eval.plots import make_2d_eval_grid
+
 
 def plot_energy_landscape(
     ax: Axes,
@@ -18,22 +20,7 @@ def plot_energy_landscape(
     For ambient_dim > 2, grid points are lifted back to ambient space via the
     embedding matrix before evaluating energy.
     """
-    x_min, x_max = data_2d[:, 0].min() - padding, data_2d[:, 0].max() + padding
-    y_min, y_max = data_2d[:, 1].min() - padding, data_2d[:, 1].max() + padding
-
-    xx, yy = np.meshgrid(
-        np.linspace(x_min, x_max, grid_resolution),
-        np.linspace(y_min, y_max, grid_resolution),
-    )
-    grid_2d = np.column_stack([xx.ravel(), yy.ravel()])
-
-    # If data lives in ambient space, lift grid points back
-    if hasattr(datamodule, "embedding_matrix") and datamodule.embedding_matrix is not None:
-        E = datamodule.embedding_matrix.numpy()  # (2, ambient_dim)
-        grid_ambient = grid_2d @ E
-        grid_tensor = torch.tensor(grid_ambient, dtype=torch.float32)
-    else:
-        grid_tensor = torch.tensor(grid_2d, dtype=torch.float32)
+    xx, yy, grid_tensor = make_2d_eval_grid(datamodule, data_2d, grid_resolution, padding)
 
     with torch.no_grad():
         energies = model.energy_net(grid_tensor.to(model.device)).cpu().numpy()
