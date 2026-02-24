@@ -99,7 +99,9 @@ class SpiralDataModule(pl.LightningDataModule):
     def plot_samples(self, ax, data: np.ndarray, labels: np.ndarray | None = None, **kwargs) -> None:
         """Plot data points as a 2D scatter."""
         data = self.project_to_viz(data)
-        defaults = {"s": 3, "alpha": 0.5, "cmap": "coolwarm"}
+        defaults = {"s": 3, "alpha": 0.5}
+        if labels is not None:
+            defaults["cmap"] = "coolwarm"
         defaults.update(kwargs)
         ax.scatter(data[:, 0], data[:, 1], c=labels, **defaults)
         ax.set_aspect("equal")

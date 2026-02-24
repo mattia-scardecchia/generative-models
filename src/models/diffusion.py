@@ -261,7 +261,6 @@ class Diffusion(GenerativeModel):
         plt.tight_layout()
         plt.savefig(output_dir / "schedule.png", dpi=150, bbox_inches="tight")
         plt.close()
-        print(f"Saved schedule plot to {output_dir / 'schedule.png'}")
 
         # --- Prediction error vs t ---
         fig, ax = plt.subplots(1, 1, figsize=(8, 5))
@@ -269,16 +268,23 @@ class Diffusion(GenerativeModel):
         plt.tight_layout()
         plt.savefig(output_dir / "prediction_error.png", dpi=150, bbox_inches="tight")
         plt.close()
-        print(f"Saved prediction error plot to {output_dir / 'prediction_error.png'}")
 
         # --- Score field visualization ---
-        t_vals = [0.1, 0.3, 0.5, 0.7, 0.9]
-        fig, axes = plt.subplots(1, len(t_vals), figsize=(4 * len(t_vals), 4))
-        plot_score_field(fig, list(axes), self, datamodule, data_2d, t_vals=t_vals)
+        t_vals = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        n_cols = 6
+        n_rows = 2
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows))
+        axes_flat = axes.flatten()
+        # First panel: just show the data
+        datamodule.plot_samples(axes_flat[0], train_np)
+        axes_flat[0].set_title("Data")
+        # Remaining panels: score field at each t
+        plot_score_field(fig, list(axes_flat[1:11]), self, datamodule, data_2d, t_vals=t_vals)
+        # Hide the unused last subplot
+        axes_flat[-1].axis("off")
         plt.tight_layout()
         plt.savefig(output_dir / "score_field.png", dpi=150, bbox_inches="tight")
         plt.close()
-        print(f"Saved score field plot to {output_dir / 'score_field.png'}")
 
         # --- Sample, then combined forward/backward + remaining trajectory plots ---
         n_eval = len(train_data)
@@ -292,9 +298,10 @@ class Diffusion(GenerativeModel):
         plt.tight_layout()
         plt.savefig(output_dir / "forward_backward.png", dpi=150, bbox_inches="tight")
         plt.close()
-        print(f"Saved forward/backward plot to {output_dir / 'forward_backward.png'}")
 
         evaluate_trajectory_model(
             self, datamodule, train_data, train_labels, output_dir, cfg,
             trajectories=trajectories,
         )
+
+        print(f"Saved plots to {output_dir}")

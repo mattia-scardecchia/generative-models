@@ -36,7 +36,6 @@ def evaluate_trajectory_model(
     plt.tight_layout()
     plt.savefig(output_dir / "samples.png", dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"Saved samples plot to {output_dir / 'samples.png'}")
 
     # --- Trajectory plot ---
     fig, ax = plt.subplots(1, 1, figsize=(8, 8))
@@ -44,6 +43,5 @@ def evaluate_trajectory_model(
     plt.tight_layout()
     plt.savefig(output_dir / "trajectories.png", dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"Saved trajectories plot to {output_dir / 'trajectories.png'}")
 
     return trajectories
