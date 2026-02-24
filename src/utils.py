@@ -32,6 +32,8 @@ def train(cfg: DictConfig) -> float | None:
 
     Returns the best validation loss (useful for hyperparameter optimization).
     """
+    import torch
+
     if cfg.get("seed"):
         pl.seed_everything(cfg.seed, workers=True)
 
@@ -48,6 +50,11 @@ def train(cfg: DictConfig) -> float | None:
         logger=loggers if loggers else False,
         callbacks=callbacks if callbacks else None,
     )
+
+    datamodule.setup()
+    x_all = torch.cat([x for x, _ in datamodule.train_dataloader()], dim=0)
+    print(f"[DEBUG] Training data — mean: {x_all.mean():.4f}, std: {x_all.std():.4f}, "
+          f"min: {x_all.min():.4f}, max: {x_all.max():.4f}")
 
     trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
 
