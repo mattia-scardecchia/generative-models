@@ -76,6 +76,8 @@ class FlowMatching(GenerativeModel):
             return x, torch.stack(trajectory)  # (n, d), (steps+1, n, d)
         return x
 
-    def evaluate(self, datamodule, train_data, train_labels, output_dir, cfg) -> None:
+    def evaluate(self, datamodule, train_data, train_labels, output_dir, cfg) -> dict:
         from src.eval.trajectory import evaluate_trajectory_model
-        evaluate_trajectory_model(self, datamodule, train_data, train_labels, output_dir, cfg)
+        _, swd = evaluate_trajectory_model(self, datamodule, train_data, train_labels, output_dir, cfg)
+        print(f"Saved plots to {output_dir}")
+        return {"swd": swd}

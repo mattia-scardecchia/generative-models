@@ -300,9 +300,10 @@ class Diffusion(GenerativeModel):
         plt.savefig(output_dir / "forward_backward.png", dpi=150, bbox_inches="tight")
         plt.close()
 
-        evaluate_trajectory_model(
+        _, swd = evaluate_trajectory_model(
             self, datamodule, train_data, train_labels, output_dir, cfg,
             trajectories=trajectories,
         )
 
         print(f"Saved plots to {output_dir}")
+        return {"swd": swd}

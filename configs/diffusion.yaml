@@ -11,6 +11,3 @@ defaults:
 seed: 42
 ckpt_path: null
 n_samples: 1000
-
-model:
-  lr: 3e-4

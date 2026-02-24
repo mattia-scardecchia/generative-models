@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 from omegaconf import DictConfig
 
+from src.eval.metrics import sliced_wasserstein
 from src.eval.plots import plot_samples_panel, plot_snapshots, plot_trajectories
 
 
@@ -13,10 +14,10 @@ def evaluate_trajectory_model(
     model, datamodule, train_data: torch.Tensor, train_labels: torch.Tensor,
     output_dir: Path, cfg: DictConfig,
     trajectories: torch.Tensor | None = None,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, float]:
     """Evaluate a trajectory-based model (diffusion, flow matching).
 
-    Returns the trajectories tensor for use by callers (e.g. combined plots).
+    Returns (trajectories, swd) tuple.
     """
     train_np = train_data.numpy()
     labels_np = train_labels.numpy()
@@ -29,6 +30,10 @@ def evaluate_trajectory_model(
         samples = trajectories[-1]
     samples_np = samples.numpy()
     traj_np = trajectories.numpy()  # (steps+1, n, data_dim)
+
+    # --- Compute Sliced Wasserstein Distance ---
+    swd = sliced_wasserstein(train_data, samples)
+    print(f"Sliced Wasserstein Distance: {swd:.4f}")
 
     # --- Samples plot (real vs generated) ---
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
@@ -44,4 +49,4 @@ def evaluate_trajectory_model(
     plt.savefig(output_dir / "trajectories.png", dpi=150, bbox_inches="tight")
     plt.close()
 
-    return trajectories
+    return trajectories, swd
