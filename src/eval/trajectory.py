@@ -98,7 +98,15 @@ def format_latex_table(results: dict[int, dict[str, float]]) -> str:
         lines.append(f"{s} & " + " & ".join(cells) + r" \\")
 
     lines += [r"\bottomrule", r"\end{tabular}", r"\end{table}"]
-    return "\n".join(lines)
+
+    preamble = [
+        r"\documentclass{article}",
+        r"\usepackage{booktabs}",
+        r"\begin{document}",
+    ]
+    postamble = [r"\end{document}"]
+
+    return "\n".join(preamble + [""] + lines + [""] + postamble)
 
 
 def evaluate_step_sweep(

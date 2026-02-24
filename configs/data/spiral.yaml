@@ -1,9 +1,9 @@
 _target_: src.data.spirals.SpiralDataModule
-n_samples: 10000
+n_samples: 100000
 noise: 0.1
 n_rotations: 3.0
 val_fraction: 0.2
 batch_size: 256
 num_workers: 0
 seed: 42
-ambient_dim: 64
+ambient_dim: 512
