@@ -229,5 +229,25 @@ class Diffusion(GenerativeModel):
         return x
 
     def evaluate(self, datamodule, train_data, train_labels, output_dir, cfg) -> None:
+        import matplotlib.pyplot as plt
+        from src.eval.plots import plot_schedule, plot_forward_process
         from src.eval.trajectory import evaluate_trajectory_model
+
+        # --- Schedule diagnostics ---
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        plot_schedule(fig, (axes[0], axes[1]), self.noise_schedule)
+        plt.tight_layout()
+        plt.savefig(output_dir / "schedule.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved schedule plot to {output_dir / 'schedule.png'}")
+
+        # --- Forward process visualization ---
+        n_timesteps = 6
+        fig, axes = plt.subplots(1, n_timesteps, figsize=(4 * n_timesteps, 4))
+        plot_forward_process(fig, list(axes), datamodule, train_data.numpy(), self.noise_schedule, n_timesteps)
+        plt.tight_layout()
+        plt.savefig(output_dir / "forward_process.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved forward process plot to {output_dir / 'forward_process.png'}")
+
         evaluate_trajectory_model(self, datamodule, train_data, train_labels, output_dir, cfg)

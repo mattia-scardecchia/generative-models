@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -204,6 +205,58 @@ def plot_trajectories(
     # Add colorbar for time
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 1))
     plt.colorbar(sm, ax=ax, label="t")
+
+
+def plot_schedule(
+    fig: Figure,
+    axes: tuple[Axes, Axes],
+    noise_schedule,
+) -> None:
+    """Plot noise schedule diagnostics (2 panels: coefficients and log SNR)."""
+    t = torch.linspace(0, 1, 200)
+    alpha = noise_schedule.alpha(t).numpy()
+    sigma = noise_schedule.sigma(t).numpy()
+    t_np = t.numpy()
+
+    # Panel 1: alpha_t and sigma_t vs t
+    axes[0].plot(t_np, alpha, label=r"$\alpha_t$", linewidth=2)
+    axes[0].plot(t_np, sigma, label=r"$\sigma_t$", linewidth=2)
+    axes[0].set_xlabel("t")
+    axes[0].set_ylabel("Coefficient")
+    axes[0].set_title("Noise Schedule")
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    # Panel 2: log SNR vs t
+    snr = alpha ** 2 / np.clip(sigma ** 2, 1e-10, None)
+    log_snr = np.log10(snr)
+    axes[1].plot(t_np, log_snr, linewidth=2, color="tab:purple")
+    axes[1].axhline(0, color="gray", linestyle="--", linewidth=1, label="SNR = 1")
+    axes[1].set_xlabel("t")
+    axes[1].set_ylabel(r"$\log_{10}$ SNR")
+    axes[1].set_title("Signal-to-Noise Ratio")
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+
+def plot_forward_process(
+    fig: Figure,
+    axes: list[Axes],
+    datamodule,
+    data: np.ndarray,
+    noise_schedule,
+    n_timesteps: int = 6,
+) -> None:
+    """Plot training data noised at increasing noise levels."""
+    t_vals = np.linspace(0, 1, n_timesteps)
+    x_0 = torch.tensor(data, dtype=torch.float32)
+    noise = torch.randn_like(x_0)
+
+    for ax, t_val in zip(axes, t_vals):
+        t = torch.full((x_0.shape[0], 1), t_val)
+        x_t = noise_schedule.q_sample(x_0, t, noise).numpy()
+        datamodule.plot_samples(ax, x_t)
+        ax.set_title(f"t = {t_val:.1f}")
 
 
 def plot_convergence(
