@@ -1,5 +1,4 @@
 _target_: src.models.diffusion.Diffusion
-architecture: ${architecture}
 time_embed_dim: 32
 data_dim: ???
 noise_schedule: vp_cosine

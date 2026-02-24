@@ -1,5 +1,4 @@
 _target_: src.models.beta_vae.BetaVAE
-architecture: ${architecture}
 data_dim: ???
 latent_dim: 2
 beta: 1

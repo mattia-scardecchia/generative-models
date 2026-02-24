@@ -22,6 +22,7 @@ class FlowMatching(GenerativeModel):
         self,
         data_dim: int,
         architecture: dict,
+        time_embed_dim: int = 32,
         sigma_min: float = 0.0,
         n_sampling_steps: int = 100,
         lr: float = 1e-3,
@@ -30,7 +31,7 @@ class FlowMatching(GenerativeModel):
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.velocity_field = TimeConditionedNet(data_dim, architecture)
+        self.velocity_field = TimeConditionedNet(data_dim, architecture, time_embed_dim)
         self.data_dim = data_dim
         self.sigma_min = sigma_min
         self.n_sampling_steps = n_sampling_steps

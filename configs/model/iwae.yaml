@@ -1,5 +1,4 @@
 _target_: src.models.beta_vae.IWAE
-architecture: ${architecture}
 data_dim: ???
 latent_dim: 2
 k: 5

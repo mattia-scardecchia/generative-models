@@ -1,5 +1,4 @@
 _target_: src.models.flow_matching.FlowMatching
-architecture: ${architecture}
 time_embed_dim: 32
 data_dim: ???
 sigma_min: 0.0

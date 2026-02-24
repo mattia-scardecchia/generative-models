@@ -9,12 +9,10 @@ from src.architectures.mlp import SinusoidalTimeEmbedding, build_backbone
 class TimeConditionedNet(nn.Module):
     """Time-conditioned network for diffusion denoisers and flow matching velocity fields."""
 
-    def __init__(self, data_dim: int, architecture: dict):
+    def __init__(self, data_dim: int, architecture: dict, time_embed_dim: int = 32):
         super().__init__()
-        arch = dict(architecture)
-        time_embed_dim = arch.pop("time_embed_dim", 32)
         self.time_embed = SinusoidalTimeEmbedding(time_embed_dim)
-        self.net, _ = build_backbone(arch, data_dim + time_embed_dim, output_dim=data_dim)
+        self.net, _ = build_backbone(architecture, data_dim + time_embed_dim, output_dim=data_dim)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         return self.net(torch.cat([x, self.time_embed(t)], dim=-1))

@@ -60,6 +60,7 @@ class Diffusion(GenerativeModel):
         self,
         data_dim: int,
         architecture: dict,
+        time_embed_dim: int = 32,
         noise_schedule: str = "vp_cosine",
         prediction_type: str = "epsilon",
         sampler: str = "ddim",
@@ -89,7 +90,7 @@ class Diffusion(GenerativeModel):
                 f"Choose from: {SAMPLER_TYPES}"
             )
 
-        self.denoiser = TimeConditionedNet(data_dim, architecture)
+        self.denoiser = TimeConditionedNet(data_dim, architecture, time_embed_dim)
         self.data_dim = data_dim
         self.prediction_type = prediction_type
         self.n_sampling_steps = n_sampling_steps

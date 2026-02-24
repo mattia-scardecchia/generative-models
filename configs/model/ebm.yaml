@@ -1,5 +1,4 @@
 _target_: src.models.ebm.EBM
-architecture: ${architecture}
 data_dim: ???
 lr: 1e-4
 langevin_steps: 60
