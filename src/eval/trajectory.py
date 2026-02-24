@@ -22,18 +22,19 @@ def evaluate_trajectory_model(
     """
     train_np = train_data.numpy()
     labels_np = train_labels.numpy()
-    n_eval = len(train_data)
 
     # --- Generate samples with trajectories (unless pre-computed) ---
     if trajectories is None:
+        n_eval = cfg.get("evaluate", {}).get("n_samples", len(train_data))
         samples, trajectories = model.sample(n_eval, return_trajectories=True)
     else:
         samples = trajectories[-1]
+    n_gen = len(samples)
     samples_np = samples.numpy()
     traj_np = trajectories.numpy()  # (steps+1, n, data_dim)
 
-    # --- Sample quality metrics ---
-    sample_metrics = log_sample_metrics(train_data, samples)
+    # --- Sample quality metrics (match real/generated counts for pairwise metrics) ---
+    sample_metrics = log_sample_metrics(train_data[:n_gen], samples)
     swd = sample_metrics["SWD"]
 
     # --- Samples plot (real vs generated) ---

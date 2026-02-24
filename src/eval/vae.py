@@ -143,7 +143,7 @@ def evaluate_vae(
     print(f"\nSaved convergence plot to {output_dir / 'convergence.png'}")
 
     # --- Sample quality metrics ---
-    n_gen_samples = cfg.get("n_gen_samples", len(train_data))
+    n_gen_samples = cfg.get("evaluate", {}).get("n_samples", 1000)
     with torch.no_grad():
         generated = model.sample(n_gen_samples)
     log_sample_metrics(train_data[:n_gen_samples], generated)

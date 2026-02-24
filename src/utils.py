@@ -70,14 +70,6 @@ def train(cfg: DictConfig) -> float | None:
 
     best_score = trainer.callback_metrics.get("val/loss")
 
-    # Unwatch wandb before evaluation to free gradient hooks
-    for logger in loggers:
-        if isinstance(logger, WandbLogger):
-            import wandb
-            wandb.unwatch(model)
-            break
-
-    # Run evaluation after training
     evaluate(cfg, model=model, datamodule=datamodule)
 
     return float(best_score) if best_score is not None else None
