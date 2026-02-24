@@ -1,6 +1,6 @@
 defaults:
-  - data: two_moons
-  - model: beta_vae
+  - data: moons
+  - model: vae
   - trainer: default
   - logger: wandb
   - callbacks: default
