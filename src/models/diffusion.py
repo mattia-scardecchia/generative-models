@@ -245,9 +245,10 @@ class Diffusion(GenerativeModel):
         return x
 
     def evaluate(self, datamodule, train_data, train_labels, output_dir, cfg) -> None:
+        import numpy as np
         import matplotlib.pyplot as plt
         from src.eval.plots import (
-            plot_schedule, plot_forward_process, plot_prediction_error, plot_score_field,
+            plot_schedule, plot_forward_backward, plot_prediction_error, plot_score_field,
         )
         from src.eval.trajectory import evaluate_trajectory_model
 
@@ -261,15 +262,6 @@ class Diffusion(GenerativeModel):
         plt.savefig(output_dir / "schedule.png", dpi=150, bbox_inches="tight")
         plt.close()
         print(f"Saved schedule plot to {output_dir / 'schedule.png'}")
-
-        # --- Forward process visualization ---
-        n_timesteps = 6
-        fig, axes = plt.subplots(1, n_timesteps, figsize=(4 * n_timesteps, 4))
-        plot_forward_process(fig, list(axes), datamodule, train_np, self.noise_schedule, n_timesteps)
-        plt.tight_layout()
-        plt.savefig(output_dir / "forward_process.png", dpi=150, bbox_inches="tight")
-        plt.close()
-        print(f"Saved forward process plot to {output_dir / 'forward_process.png'}")
 
         # --- Prediction error vs t ---
         fig, ax = plt.subplots(1, 1, figsize=(8, 5))
@@ -288,4 +280,21 @@ class Diffusion(GenerativeModel):
         plt.close()
         print(f"Saved score field plot to {output_dir / 'score_field.png'}")
 
-        evaluate_trajectory_model(self, datamodule, train_data, train_labels, output_dir, cfg)
+        # --- Sample, then combined forward/backward + remaining trajectory plots ---
+        n_eval = len(train_data)
+        samples, trajectories = self.sample(n_eval, return_trajectories=True)
+        traj_np = trajectories.numpy()
+
+        t_grid = np.arange(0.0, 1.01, 0.1)
+        n_cols = len(t_grid)
+        fig, axes = plt.subplots(2, n_cols, figsize=(3 * n_cols, 6))
+        plot_forward_backward(fig, axes, datamodule, train_np, self.noise_schedule, traj_np, t_grid)
+        plt.tight_layout()
+        plt.savefig(output_dir / "forward_backward.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved forward/backward plot to {output_dir / 'forward_backward.png'}")
+
+        evaluate_trajectory_model(
+            self, datamodule, train_data, train_labels, output_dir, cfg,
+            trajectories=trajectories,
+        )

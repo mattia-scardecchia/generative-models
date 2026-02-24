@@ -332,6 +332,46 @@ def plot_score_field(
         ax.set_aspect("equal")
 
 
+def plot_forward_backward(
+    fig: Figure,
+    axes: np.ndarray,
+    datamodule,
+    data: np.ndarray,
+    noise_schedule,
+    trajectories: np.ndarray,
+    t_vals: np.ndarray,
+) -> None:
+    """Plot forward noising (top row) and backward sampling (bottom row) side by side.
+
+    Args:
+        axes: 2D array of axes with shape (2, n_timesteps).
+        data: Training data in model space, (n_samples, data_dim).
+        trajectories: Sampling trajectory, (total_steps, n_samples, data_dim).
+            Frame 0 = noise (t_max), frame -1 = final sample (t=0).
+        t_vals: Timestep values for columns (e.g. [0.0, 0.1, ..., 1.0]).
+    """
+    x_0 = torch.tensor(data, dtype=torch.float32)
+    noise = torch.randn_like(x_0)
+    total_steps = trajectories.shape[0]
+
+    for col, t_val in enumerate(t_vals):
+        # Top row: forward process (noise the data at this t)
+        t = torch.full((x_0.shape[0], 1), t_val)
+        x_t = noise_schedule.q_sample(x_0, t, noise).numpy()
+        datamodule.plot_samples(axes[0, col], x_t)
+        axes[0, col].set_title(f"t = {t_val:.1f}", fontsize=9)
+
+        # Bottom row: backward process (sampling trajectory at this t)
+        # Trajectory frame 0 = t_max ≈ 1, frame -1 = t = 0
+        # Map t_val to frame index: high t → early frame, low t → late frame
+        frame_idx = int(round((1.0 - t_val) * (total_steps - 1)))
+        frame_idx = np.clip(frame_idx, 0, total_steps - 1)
+        datamodule.plot_samples(axes[1, col], trajectories[frame_idx])
+
+    axes[0, 0].set_ylabel("Forward q(x_t|x_0)", fontsize=10)
+    axes[1, 0].set_ylabel("Backward p_θ(x_t)", fontsize=10)
+
+
 def plot_schedule(
     fig: Figure,
     axes: tuple[Axes, Axes],
