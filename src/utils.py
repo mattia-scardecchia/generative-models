@@ -53,8 +53,8 @@ def train(cfg: DictConfig) -> float | None:
 
     datamodule.setup()
     x_all = torch.cat([x for x, _ in datamodule.train_dataloader()], dim=0)
-    print(f"[DEBUG] Training data — mean: {x_all.mean():.4f}, std: {x_all.std():.4f}, "
-          f"min: {x_all.min():.4f}, max: {x_all.max():.4f}")
+    print(f"Training data — shape: {list(x_all.shape)}, mean: {x_all.mean():.4f}, "
+          f"std: {x_all.std():.4f}, range: [{x_all.min():.2f}, {x_all.max():.2f}]")
 
     trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
 

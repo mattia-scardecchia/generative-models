@@ -179,7 +179,9 @@ class Diffusion(GenerativeModel):
         posterior variance.
         """
         schedule = self.noise_schedule
-        t_max = 1.0 - 1e-3
+        # Epsilon prediction divides by α_t, which → 0 at t=1; offset avoids amplification.
+        # Velocity and x0 predictions have no such division.
+        t_max = 1.0 - 1e-2 if self.prediction_type == "epsilon" else 1.0
         ts = torch.linspace(t_max, 0.0, self.n_sampling_steps + 1, device=self.device)
 
         # Initialize at the correct noise level for the schedule
@@ -189,6 +191,9 @@ class Diffusion(GenerativeModel):
         if return_trajectories:
             trajectory = [x.clone()]
 
+        # Track norms for diagnostics
+        x_norms, x0_hat_norms = [], []
+
         for i in range(self.n_sampling_steps):
             t_now = ts[i]
             t_next = ts[i + 1]
@@ -196,6 +201,9 @@ class Diffusion(GenerativeModel):
             t_batch = t_now.expand(n_samples)
             output = self.denoiser(x, t_batch)
             x0_hat, eps_hat = self._predict_x0_and_eps(x, t_batch, output)
+
+            x_norms.append(x.norm(dim=-1).mean().item())
+            x0_hat_norms.append(x0_hat.norm(dim=-1).mean().item())
 
             if t_next > 0:
                 alpha_s = schedule.alpha(t_next.unsqueeze(0)).squeeze(0)
@@ -223,6 +231,14 @@ class Diffusion(GenerativeModel):
 
             if return_trajectories:
                 trajectory.append(x.clone())
+
+        # Print sampling diagnostics
+        peak_idx = max(range(len(x0_hat_norms)), key=lambda i: x0_hat_norms[i])
+        print(f"Sampling diagnostics ({self.n_sampling_steps} steps, {self.prediction_type} prediction):")
+        print(f"  |x| :  init={x_norms[0]:.2f}  final={x.norm(dim=-1).mean():.2f}")
+        print(f"  |x0_hat|:  first={x0_hat_norms[0]:.2f}  "
+              f"peak={x0_hat_norms[peak_idx]:.2f} (step {peak_idx}, t={ts[peak_idx]:.3f})  "
+              f"last={x0_hat_norms[-1]:.2f}")
 
         if return_trajectories:
             return x, torch.stack(trajectory)

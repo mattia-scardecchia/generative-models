@@ -22,8 +22,9 @@ class SinusoidalTimeEmbedding(nn.Module):
 class MLPVelocityField(nn.Module):
     """Time-conditioned MLP. Used for flow matching velocity fields and diffusion denoisers."""
 
-    def __init__(self, data_dim: int, hidden_dims: list[int], time_embed_dim: int = 32, activation: str = "ReLU"):
+    def __init__(self, data_dim: int, hidden_dims: list[int], time_embed_dim: int = 32, activation: str = "ReLU", skip_connection: bool = False):
         super().__init__()
+        self.skip_connection = skip_connection
         self.time_embed = SinusoidalTimeEmbedding(time_embed_dim)
         activation_cls = getattr(nn, activation)
         layers = []
@@ -37,7 +38,10 @@ class MLPVelocityField(nn.Module):
 
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         t_embed = self.time_embed(t)
-        return self.net(torch.cat([x, t_embed], dim=-1))
+        out = self.net(torch.cat([x, t_embed], dim=-1))
+        if self.skip_connection:
+            out = out + x
+        return out
 
 
 class MLPEncoder(nn.Module):
