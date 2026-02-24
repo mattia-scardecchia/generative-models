@@ -1,7 +1,7 @@
 defaults:
   - /data: spiral
   - /model: diffusion
-  - /architecture: mlp
+  - /architecture: resmlp
   - /trainer: default
   - /logger: wandb
   - /callbacks: default
