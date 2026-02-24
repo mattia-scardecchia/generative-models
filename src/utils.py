@@ -41,7 +41,8 @@ def train(cfg: DictConfig) -> float | None:
     datamodule = hydra.utils.instantiate(cfg.data)
     with open_dict(cfg):
         cfg.model.data_dim = datamodule.data_dim
-    model = hydra.utils.instantiate(cfg.model, architecture=cfg.architecture)
+        cfg.model.architecture = cfg.architecture
+    model = hydra.utils.instantiate(cfg.model)
 
     loggers = instantiate_loggers(cfg.get("logger"))
     for logger in loggers:
@@ -100,7 +101,8 @@ def evaluate(cfg: DictConfig, model=None, datamodule=None) -> None:
             raise ValueError("ckpt_path must be provided when model is not passed directly")
         with open_dict(cfg):
             cfg.model.data_dim = datamodule.data_dim
-        model = hydra.utils.instantiate(cfg.model, architecture=cfg.architecture)
+            cfg.model.architecture = cfg.architecture
+        model = hydra.utils.instantiate(cfg.model)
         checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["state_dict"])
 
