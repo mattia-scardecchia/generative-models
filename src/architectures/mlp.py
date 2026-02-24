@@ -22,14 +22,15 @@ class SinusoidalTimeEmbedding(nn.Module):
 class MLPVelocityField(nn.Module):
     """Time-conditioned MLP. Used for flow matching velocity fields and diffusion denoisers."""
 
-    def __init__(self, data_dim: int, hidden_dims: list[int], time_embed_dim: int = 32):
+    def __init__(self, data_dim: int, hidden_dims: list[int], time_embed_dim: int = 32, activation: str = "ReLU"):
         super().__init__()
         self.time_embed = SinusoidalTimeEmbedding(time_embed_dim)
+        activation_cls = getattr(nn, activation)
         layers = []
         in_dim = data_dim + time_embed_dim
         for h_dim in hidden_dims:
             layers.append(nn.Linear(in_dim, h_dim))
-            layers.append(nn.ReLU())
+            layers.append(activation_cls())
             in_dim = h_dim
         layers.append(nn.Linear(in_dim, data_dim))
         self.net = nn.Sequential(*layers)
@@ -46,13 +47,14 @@ class MLPEncoder(nn.Module):
     The generative model (e.g., BetaVAE) adds its own projection heads.
     """
 
-    def __init__(self, input_dim: int, hidden_dims: list[int]):
+    def __init__(self, input_dim: int, hidden_dims: list[int], activation: str = "ReLU"):
         super().__init__()
+        activation_cls = getattr(nn, activation)
         layers = []
         in_dim = input_dim
         for h_dim in hidden_dims:
             layers.append(nn.Linear(in_dim, h_dim))
-            layers.append(nn.ReLU())
+            layers.append(activation_cls())
             in_dim = h_dim
         self.net = nn.Sequential(*layers)
         self.output_dim = hidden_dims[-1]
@@ -64,13 +66,14 @@ class MLPEncoder(nn.Module):
 class MLPDecoder(nn.Module):
     """MLP decoder. Maps a latent code to a reconstruction in data space."""
 
-    def __init__(self, input_dim: int, hidden_dims: list[int], output_dim: int):
+    def __init__(self, input_dim: int, hidden_dims: list[int], output_dim: int, activation: str = "ReLU"):
         super().__init__()
+        activation_cls = getattr(nn, activation)
         layers = []
         in_dim = input_dim
         for h_dim in hidden_dims:
             layers.append(nn.Linear(in_dim, h_dim))
-            layers.append(nn.ReLU())
+            layers.append(activation_cls())
             in_dim = h_dim
         layers.append(nn.Linear(in_dim, output_dim))
         self.net = nn.Sequential(*layers)

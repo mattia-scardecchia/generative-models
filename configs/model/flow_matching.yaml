@@ -4,6 +4,7 @@ velocity_field:
   data_dim: ${..data_dim}
   hidden_dims: [256, 256, 256]
   time_embed_dim: 32
+  activation: ReLU
 data_dim: ???
 sigma_min: 0.0
 n_sampling_steps: 100
