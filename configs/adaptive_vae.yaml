@@ -1,0 +1,13 @@
+defaults:
+  - /data: spiral
+  - /model: adaptive_vae
+  - /architecture: resmlp
+  - /trainer: default
+  - /evaluate: default
+  - /logger: wandb
+  - /callbacks: default
+  - override hydra/launcher: submitit_slurm
+  - _self_
+
+seed: 42
+ckpt_path: null

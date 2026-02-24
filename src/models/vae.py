@@ -368,3 +368,108 @@ class IWAE(BetaVAE):
         self.log("val/iwae_bound", losses["iwae_bound"])
         self.log("val/decoder_std", self.decoder_var.sqrt())
         return losses["loss"]
+
+
+class PIController:
+    """PI controller for adaptive beta in Beta-VAE.
+
+    Adjusts β each training step to drive KL divergence toward a target value.
+    """
+
+    def __init__(
+        self,
+        kl_target: float,
+        Kp: float = 0.01,
+        Ki: float = 0.001,
+        beta_min: float = 0.0,
+        beta_max: float = 10.0,
+        warmup_steps: int = 0,
+    ):
+        self.kl_target = kl_target
+        self.Kp = Kp
+        self.Ki = Ki
+        self.beta_min = beta_min
+        self.beta_max = beta_max
+        self.warmup_steps = warmup_steps
+        self.integral = 0.0
+        self.beta = beta_min
+        self.step_count = 0
+
+    @property
+    def effective_kl_target(self) -> float:
+        if self.warmup_steps <= 0:
+            return self.kl_target
+        t = min(self.step_count / self.warmup_steps, 1.0)
+        return t * self.kl_target
+
+    def update(self, kl_value: float) -> float:
+        error = kl_value - self.effective_kl_target
+        candidate = self.beta + self.Kp * error + self.Ki * (self.integral + error)
+        clamped = max(self.beta_min, min(self.beta_max, candidate))
+        # Anti-windup: only accumulate integral when not clamped,
+        # or when the error pushes away from the limit
+        at_max = clamped >= self.beta_max
+        at_min = clamped <= self.beta_min
+        if not ((at_max and error > 0) or (at_min and error < 0)):
+            self.integral += error
+        self.beta = clamped
+        self.step_count += 1
+        return self.beta
+
+
+class AdaptiveBetaVAE(BetaVAE):
+    """Beta-VAE with a PI controller that automatically adjusts β to drive KL
+    divergence toward a configurable target."""
+
+    def __init__(
+        self,
+        data_dim: int,
+        architecture: dict,
+        latent_dim: int,
+        kl_target: float,
+        Kp: float = 0.01,
+        Ki: float = 0.001,
+        beta_min: float = 0.0,
+        beta_max: float = 10.0,
+        warmup_steps: int = 0,
+        decoder_var: float | str = 1.0,
+        lr: float = 1e-3,
+        optimizer_config: dict | None = None,
+        scheduler_config: dict | None = None,
+    ):
+        super().__init__(
+            data_dim=data_dim,
+            architecture=architecture,
+            latent_dim=latent_dim,
+            beta=beta_min,
+            decoder_var=decoder_var,
+            lr=lr,
+            optimizer_config=optimizer_config,
+            scheduler_config=scheduler_config,
+        )
+        self.save_hyperparameters()
+        self._pi_controller = PIController(
+            kl_target=kl_target,
+            Kp=Kp,
+            Ki=Ki,
+            beta_min=beta_min,
+            beta_max=beta_max,
+            warmup_steps=warmup_steps,
+        )
+
+    def training_step(self, batch, batch_idx):
+        x, _ = batch
+        losses = self._compute_loss(x)
+        self.log("train/loss", losses["loss"], prog_bar=True)
+        self.log("train/recon_loss", losses["recon_loss"])
+        self.log("train/kl_loss", losses["kl_loss"])
+        self.log("train/decoder_std", losses["decoder_var"].sqrt())
+        self.log("train/posterior_mu_mean", losses["mu"].mean())
+        self.log("train/posterior_var_mean", losses["logvar"].exp().mean())
+        # PI controller update
+        kl_value = losses["kl_loss"].detach().item()
+        self.beta = self._pi_controller.update(kl_value)
+        self.log("train/beta", self.beta)
+        self.log("train/pi_kl_target", self._pi_controller.effective_kl_target)
+        self.log("train/pi_integral", self._pi_controller.integral)
+        return losses["loss"]

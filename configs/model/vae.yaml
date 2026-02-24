@@ -1,4 +1,4 @@
-_target_: src.models.beta_vae.BetaVAE
+_target_: src.models.vae.BetaVAE
 data_dim: ???
 latent_dim: 2
 beta: 1
