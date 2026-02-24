@@ -64,10 +64,18 @@ def train(cfg: DictConfig) -> float | None:
     x_all = torch.cat([x for x, _ in datamodule.train_dataloader()], dim=0)
     print(f"Training data — shape: {list(x_all.shape)}, mean: {x_all.mean():.4f}, "
           f"std: {x_all.std():.4f}, range: [{x_all.min():.2f}, {x_all.max():.2f}]")
+    del x_all
 
     trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     best_score = trainer.callback_metrics.get("val/loss")
+
+    # Unwatch wandb before evaluation to free gradient hooks
+    for logger in loggers:
+        if isinstance(logger, WandbLogger):
+            import wandb
+            wandb.unwatch(model)
+            break
 
     # Run evaluation after training
     evaluate(cfg, model=model, datamodule=datamodule)
@@ -115,4 +123,5 @@ def evaluate(cfg: DictConfig, model=None, datamodule=None) -> None:
     train_data = torch.cat(train_data, dim=0)
     train_labels = torch.cat(train_labels, dim=0)
 
-    model.evaluate(datamodule, train_data, train_labels, output_dir, cfg)
+    with torch.no_grad():
+        model.evaluate(datamodule, train_data, train_labels, output_dir, cfg)

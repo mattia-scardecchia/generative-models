@@ -8,7 +8,7 @@ import wandb
 from omegaconf import DictConfig
 
 from src.eval.ebm_plots import plot_energy_landscape, plot_ebm_samples
-from src.eval.metrics import compute_sample_metrics
+from src.eval.metrics import log_sample_metrics
 
 
 def evaluate_ebm(
@@ -59,13 +59,4 @@ def evaluate_ebm(
         })
 
     # --- Sample quality metrics ---
-    sample_metrics = compute_sample_metrics(train_data[:n_gen_samples], generated_tensor)
-
-    print("\nSample quality metrics:")
-    print("-" * 45)
-    for name, val in sample_metrics.items():
-        print(f"  {name}: {val:.4f}")
-
-    if wandb.run is not None:
-        for name, val in sample_metrics.items():
-            wandb.log({f"eval/{name}": val})
+    log_sample_metrics(train_data[:n_gen_samples], generated_tensor)

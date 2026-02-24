@@ -306,6 +306,7 @@ class Diffusion(GenerativeModel):
             self, datamodule, train_data, train_labels, output_dir, cfg,
             trajectories=trajectories,
         )
+        del samples, trajectories, traj_np
 
         # --- Step sweep ---
         step_counts = eval_cfg.get("step_counts", None)

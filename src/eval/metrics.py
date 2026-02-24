@@ -1,4 +1,7 @@
+from typing import Callable
+
 import torch
+import wandb
 from dataclasses import dataclass
 
 
@@ -159,6 +162,7 @@ def one_nn_accuracy(x: torch.Tensor, y: torch.Tensor) -> float:
     return (nn_labels == labels).float().mean().item()
 
 
+@torch.no_grad()
 def compute_sample_metrics(real: torch.Tensor, generated: torch.Tensor) -> dict[str, float]:
     """Compute all sample quality metrics between real and generated data.
 
@@ -182,6 +186,22 @@ def compute_sample_metrics(real: torch.Tensor, generated: torch.Tensor) -> dict[
     }
 
 
+def log_sample_metrics(real: torch.Tensor, generated: torch.Tensor) -> dict[str, float]:
+    """Compute sample quality metrics, print them, and log to wandb."""
+    metrics = compute_sample_metrics(real, generated)
+
+    print("\nSample quality metrics:")
+    print("-" * 45)
+    for name, val in metrics.items():
+        print(f"  {name}: {val:.4f}")
+
+    if wandb.run is not None:
+        for name, val in metrics.items():
+            wandb.log({f"eval/{name}": val})
+
+    return metrics
+
+
 # --- VAE-specific metrics ---
 
 
@@ -195,39 +215,31 @@ class EvalMetrics:
     kl_to_posterior: float
 
 
-def compute_elbo_curve(
-    model, data: torch.Tensor, sample_counts: list[int], batch_size: int = 64
+def _compute_metric_curve(
+    model_fn: Callable[[torch.Tensor, int], torch.Tensor],
+    data: torch.Tensor,
+    sample_counts: list[int],
+    batch_size: int = 64,
 ) -> list[float]:
-    """Compute ELBO estimates for increasing numbers of MC samples."""
+    """Compute a per-sample metric for increasing numbers of MC/IS samples.
+
+    Args:
+        model_fn: Callable (batch, n_samples) -> per-sample values of shape (batch_size,).
+        data: Evaluation data.
+        sample_counts: List of K values to evaluate.
+        batch_size: Data batch size for memory-efficient evaluation.
+    """
     estimates = []
     with torch.no_grad():
         for k in sample_counts:
-            elbo_sum = 0.0
-            n_samples = 0
+            total = 0.0
+            n = 0
             for i in range(0, len(data), batch_size):
                 batch = data[i : i + batch_size]
-                elbo_values = model.elbo(batch, n_samples=k)
-                elbo_sum += elbo_values.sum().item()
-                n_samples += len(batch)
-            estimates.append(elbo_sum / n_samples)
-    return estimates
-
-
-def compute_ll_curve(
-    model, data: torch.Tensor, sample_counts: list[int], batch_size: int = 64
-) -> list[float]:
-    """Compute log-likelihood estimates for increasing numbers of importance samples."""
-    estimates = []
-    with torch.no_grad():
-        for k in sample_counts:
-            ll_sum = 0.0
-            n_samples = 0
-            for i in range(0, len(data), batch_size):
-                batch = data[i : i + batch_size]
-                ll_values = model.importance_sampling_log_prob_estimate(batch, n_samples=k)
-                ll_sum += ll_values.sum().item()
-                n_samples += len(batch)
-            estimates.append(ll_sum / n_samples)
+                values = model_fn(batch, k)
+                total += values.sum().item()
+                n += len(batch)
+            estimates.append(total / n)
     return estimates
 
 
@@ -242,8 +254,14 @@ def compute_eval_metrics(
     The model must expose: elbo(), importance_sampling_log_prob_estimate(),
     encode(), and _kl_divergence().
     """
-    elbo_estimates = compute_elbo_curve(model, data, elbo_sample_counts)
-    ll_estimates = compute_ll_curve(model, data, ll_sample_counts)
+    elbo_estimates = _compute_metric_curve(
+        lambda batch, k: model.elbo(batch, n_samples=k),
+        data, elbo_sample_counts,
+    )
+    ll_estimates = _compute_metric_curve(
+        lambda batch, k: model.importance_sampling_log_prob_estimate(batch, n_samples=k),
+        data, ll_sample_counts,
+    )
 
     with torch.no_grad():
         mu, logvar = model.encode(data)

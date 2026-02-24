@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import wandb
 from omegaconf import DictConfig
 
-from src.eval.metrics import compute_eval_metrics, compute_sample_metrics
+from src.eval.metrics import compute_eval_metrics, log_sample_metrics
 from src.eval.plots import plot_reconstructions, plot_latent_space, plot_convergence
 
 
@@ -146,13 +146,4 @@ def evaluate_vae(
     n_gen_samples = cfg.get("n_gen_samples", len(train_data))
     with torch.no_grad():
         generated = model.sample(n_gen_samples)
-    sample_metrics = compute_sample_metrics(train_data[:n_gen_samples], generated)
-
-    print("\nSample quality metrics:")
-    print("-" * 45)
-    for name, val in sample_metrics.items():
-        print(f"  {name}: {val:.4f}")
-
-    if wandb.run is not None:
-        for name, val in sample_metrics.items():
-            wandb.log({f"eval/{name}": val})
+    log_sample_metrics(train_data[:n_gen_samples], generated)
