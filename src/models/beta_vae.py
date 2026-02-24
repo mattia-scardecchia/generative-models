@@ -7,6 +7,9 @@ from src.architectures import EncoderNet, DecoderNet
 from src.models.base import GenerativeModel
 
 
+VAR_MAX = 5.0  # Numerical stability
+
+
 class BetaVAE(GenerativeModel):
     """Beta-VAE with configurable encoder and decoder.
 
@@ -23,6 +26,7 @@ class BetaVAE(GenerativeModel):
         architecture: dict,
         latent_dim: int,
         beta: float = 1.0,
+        decoder_var: float | str = 1.0,
         lr: float = 1e-3,
         optimizer_config: dict | None = None,
         scheduler_config: dict | None = None,
@@ -34,20 +38,32 @@ class BetaVAE(GenerativeModel):
         self.decoder = DecoderNet(latent_dim, data_dim, architecture)
         self.latent_dim = latent_dim
         self.beta = beta
+        self.data_dim = data_dim
 
         encoder_output_dim = self.encoder.output_dim
         self.fc_mu = nn.Linear(encoder_output_dim, latent_dim)
         self.fc_logvar = nn.Linear(encoder_output_dim, latent_dim)
-        self.decoder_log_var = nn.Parameter(torch.zeros(1))
-        self.data_dim = data_dim
+
+        if decoder_var == "learned":
+            self._fixed_decoder_var = None
+            self.decoder_log_var = nn.Parameter(torch.zeros(1))
+        else:
+            self._fixed_decoder_var = float(decoder_var)
+            self.register_buffer(
+                "_decoder_var_tensor", torch.tensor([self._fixed_decoder_var])
+            )
 
     @property
     def decoder_var(self) -> torch.Tensor:
-        return torch.exp(self.decoder_log_var)
+        if self._fixed_decoder_var is not None:
+            return self._decoder_var_tensor
+        return torch.exp(torch.clamp(self.decoder_log_var, min=-VAR_MAX, max=VAR_MAX))
 
     def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         h = self.encoder(x)
-        return self.fc_mu(h), self.fc_logvar(h)
+        mu = self.fc_mu(h)
+        logvar = torch.clamp(self.fc_logvar(h), min=-VAR_MAX, max=VAR_MAX)
+        return mu, logvar
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         return self.decoder(z)
@@ -96,7 +112,7 @@ class BetaVAE(GenerativeModel):
     ) -> torch.Tensor:
         """Log likelihood log p(x|z) = N(x; f(z), σ²I), where:
           - f(z) is the decoder network output
-          - σ² is a learned scalar shared across all dimensions
+          - σ² is a fixed or learned scalar shared across all dimensions
 
         Full formula:
             log p(x|z) = -D/2 * log(2π) - D/2 * log(σ²) - ||x - f(z)||² / (2σ²)
@@ -105,7 +121,14 @@ class BetaVAE(GenerativeModel):
             Per-sample log probabilities, shape (batch,).
         """
         d = x[0].numel()
-        logvar = self.decoder_log_var.expand(d)
+        if self._fixed_decoder_var is not None:
+            logvar = torch.full(
+                (d,), math.log(self._fixed_decoder_var), device=x.device
+            )
+        else:
+            logvar = torch.clamp(
+                self.decoder_log_var, min=-VAR_MAX, max=VAR_MAX
+            ).expand(d)
         return self._log_prob_factorized_gaussian(x, x_recon, logvar)
 
     def _log_prob_prior(self, z: torch.Tensor) -> torch.Tensor:
@@ -161,6 +184,8 @@ class BetaVAE(GenerativeModel):
             "recon_loss": recon_loss,
             "kl_loss": kl_loss,
             "decoder_var": self.decoder_var,
+            "mu": mu,
+            "logvar": logvar,
         }
 
     def training_step(self, batch, batch_idx):
@@ -170,47 +195,20 @@ class BetaVAE(GenerativeModel):
         self.log("train/recon_loss", losses["recon_loss"])
         self.log("train/kl_loss", losses["kl_loss"])
         self.log("train/decoder_std", losses["decoder_var"].sqrt())
+        self.log("train/posterior_mu_mean", losses["mu"].mean())
+        self.log("train/posterior_var_mean", losses["logvar"].exp().mean())
         return losses["loss"]
 
     def validation_step(self, batch, batch_idx):
         x, _ = batch
-
-        # Compute losses with gradients enabled to measure gradient magnitudes
-        with torch.enable_grad():
-            x_recon, mu, logvar = self(x)
-            recon_loss = -torch.mean(self._log_prob_x_given_z(x, x_recon))
-            kl_loss = torch.mean(self._kl_divergence(mu, logvar))
-
-            # Compute gradient magnitude for reconstruction loss
-            self.zero_grad()
-            recon_loss.backward(retain_graph=True)
-            recon_grad_norm = self._compute_grad_norm()
-
-            # Compute gradient magnitude for KL loss
-            self.zero_grad()
-            kl_loss.backward()
-            kl_grad_norm = self._compute_grad_norm()
-
-            self.zero_grad()
-
-        loss = recon_loss + self.beta * kl_loss
-
-        self.log("val/loss", loss, prog_bar=True)
-        self.log("val/recon_loss", recon_loss)
-        self.log("val/kl_loss", kl_loss)
-        self.log("val/decoder_std", self.decoder_var.sqrt())
-        self.log("val/recon_grad_norm", recon_grad_norm)
-        self.log("val/kl_grad_norm", kl_grad_norm)
-
-        return loss
-
-    def _compute_grad_norm(self) -> torch.Tensor:
-        """Compute the L2 norm of gradients across all parameters."""
-        total_norm_sq = 0.0
-        for p in self.parameters():
-            if p.grad is not None:
-                total_norm_sq += p.grad.data.pow(2).sum().item()
-        return torch.tensor(total_norm_sq).sqrt()
+        losses = self._compute_loss(x)
+        self.log("val/loss", losses["loss"], prog_bar=True)
+        self.log("val/recon_loss", losses["recon_loss"])
+        self.log("val/kl_loss", losses["kl_loss"])
+        self.log("val/decoder_std", losses["decoder_var"].sqrt())
+        self.log("val/posterior_mu_mean", losses["mu"].mean())
+        self.log("val/posterior_var_mean", losses["logvar"].exp().mean())
+        return losses["loss"]
 
     @torch.no_grad()
     def sample(self, n_samples: int) -> torch.Tensor:

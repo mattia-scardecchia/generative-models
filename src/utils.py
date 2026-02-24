@@ -50,6 +50,7 @@ def train(cfg: DictConfig) -> float | None:
                 OmegaConf.to_container(cfg, resolve=True),
                 allow_val_change=True,
             )
+            logger.watch(model, log="gradients", log_freq=100)
             break
     callbacks = instantiate_callbacks(cfg.get("callbacks"))
 

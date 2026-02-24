@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import wandb
 from omegaconf import DictConfig
 
 from src.eval.metrics import compute_eval_metrics
@@ -34,6 +35,8 @@ def evaluate_vae(
     )
     plt.tight_layout()
     plt.savefig(output_dir / "reconstructions.png", dpi=150, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/reconstructions": wandb.Image(fig)})
     plt.close()
     print(f"Saved reconstructions plot to {output_dir / 'reconstructions.png'}")
 
@@ -81,6 +84,8 @@ def evaluate_vae(
     )
     plt.tight_layout()
     plt.savefig(output_dir / "latent_space.png", dpi=300, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/latent_space": wandb.Image(fig)})
     plt.close()
     print(f"Saved latent space plot to {output_dir / 'latent_space.png'}")
 
@@ -116,5 +121,13 @@ def evaluate_vae(
     )
     plt.tight_layout()
     plt.savefig(output_dir / "convergence.png", dpi=150, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/convergence": wandb.Image(fig)})
+        wandb.log({
+            "eval/kl_to_prior": metrics.kl_to_prior,
+            "eval/kl_to_posterior": metrics.kl_to_posterior,
+            "eval/elbo_K1": metrics.elbo_estimates[0],
+            "eval/ll_K1000": metrics.ll_estimates[-1],
+        })
     plt.close()
     print(f"\nSaved convergence plot to {output_dir / 'convergence.png'}")

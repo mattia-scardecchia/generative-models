@@ -2,4 +2,5 @@ _target_: src.models.beta_vae.BetaVAE
 data_dim: ???
 latent_dim: 2
 beta: 1
+decoder_var: learned # float or "learned"
 lr: 2e-3

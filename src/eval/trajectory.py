@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
+import wandb
 from omegaconf import DictConfig
 
 from src.eval.metrics import sliced_wasserstein, compute_sample_metrics
@@ -34,12 +35,16 @@ def evaluate_trajectory_model(
     # --- Compute Sliced Wasserstein Distance ---
     swd = sliced_wasserstein(train_data, samples)
     print(f"Sliced Wasserstein Distance: {swd:.4f}")
+    if wandb.run is not None:
+        wandb.log({"eval/swd": swd})
 
     # --- Samples plot (real vs generated) ---
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     plot_samples_panel(fig, (axes[0], axes[1]), datamodule, train_np, samples_np, labels_np)
     plt.tight_layout()
     plt.savefig(output_dir / "samples.png", dpi=150, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/samples": wandb.Image(fig)})
     plt.close()
 
     # --- Trajectory plot ---
@@ -47,6 +52,8 @@ def evaluate_trajectory_model(
     plot_trajectories(fig, ax, datamodule, traj_np, n_trajectories=50)
     plt.tight_layout()
     plt.savefig(output_dir / "trajectories.png", dpi=150, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/trajectories": wandb.Image(fig)})
     plt.close()
 
     return trajectories, swd
@@ -102,6 +109,7 @@ def format_latex_table(results: dict[int, dict[str, float]]) -> str:
     preamble = [
         r"\documentclass{article}",
         r"\usepackage{booktabs}",
+        r"\usepackage{amsmath,amssymb}",
         r"\begin{document}",
     ]
     postamble = [r"\end{document}"]
@@ -153,5 +161,14 @@ def evaluate_step_sweep(
     tex_path = output_dir / "step_sweep.tex"
     tex_path.write_text(table)
     print(f"\nLaTeX table saved to {tex_path}")
+
+    # Log to wandb
+    if wandb.run is not None:
+        metric_names = list(next(iter(results.values())).keys())
+        wandb_table = wandb.Table(columns=["steps"] + metric_names)
+        for n_steps in sorted(results.keys()):
+            row = [n_steps] + [results[n_steps][m] for m in metric_names]
+            wandb_table.add_data(*row)
+        wandb.log({"eval/step_sweep": wandb_table})
 
     return results

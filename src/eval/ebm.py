@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch
 import matplotlib.pyplot as plt
+import wandb
 from omegaconf import DictConfig
 
 from src.eval.ebm_plots import plot_energy_landscape, plot_ebm_samples
@@ -32,6 +33,8 @@ def evaluate_ebm(
 
     plt.tight_layout()
     plt.savefig(output_dir / "ebm_evaluation.png", dpi=200, bbox_inches="tight")
+    if wandb.run is not None:
+        wandb.log({"eval/ebm_evaluation": wandb.Image(fig)})
     plt.close()
     print(f"Saved EBM evaluation plot to {output_dir / 'ebm_evaluation.png'}")
 
@@ -44,3 +47,11 @@ def evaluate_ebm(
     print(f"  Std:    {energy_train.std():.4f}")
     print(f"  Min:    {energy_train.min():.4f}")
     print(f"  Max:    {energy_train.max():.4f}")
+
+    if wandb.run is not None:
+        wandb.log({
+            "eval/energy_mean": energy_train.mean(),
+            "eval/energy_std": energy_train.std(),
+            "eval/energy_min": energy_train.min(),
+            "eval/energy_max": energy_train.max(),
+        })
